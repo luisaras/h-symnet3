@@ -50,7 +50,7 @@ class GATConvLayer(tf.keras.layers.Layer):
         if self.num_edge_types:
             A = tf.transpose(A, (1, 2, 3, 0))
         for layer in self.gat_layers:
-            X = layer([X, A, use_self_loops_in_all_adj, remove_attn, training])
+            X = layer(X, A=A, add_self_loops=use_self_loops_in_all_adj, remove_attn=remove_attn, training=training)
         return X
 
 class GATConvLayerDistance(tf.keras.layers.Layer):
@@ -89,12 +89,12 @@ class GATConvLayerDistance(tf.keras.layers.Layer):
             # Final hidden to output layer, notice params
             self.gat_layers.append(GraphAttentionDistance(channels=self.channels, attn_heads=self.attn_heads, concat_heads=self.concat_last_gat, dropout_rate=self.dropout_rate, activation=self.activation, use_bias=False , kernel_initializer=self.initializer, num_edge_types=self.num_edge_types, return_attn_coef=self.return_attn_coef))
 
-    def call(self, X, A, distance_mat, use_self_loops_in_all_adj=True, remove_attn=False, training=True, beta=1):
+    def call(self, X, A, distance_mat, distance_mask, use_self_loops_in_all_adj=True, remove_attn=False, training=True):
         if self.num_edge_types:
             A = tf.transpose(A, (1, 2, 3, 0))
             distance_mat = tf.transpose(distance_mat, (1, 2, 3, 0))
         for layer in self.gat_layers:
-            X = layer([X, A, distance_mat, use_self_loops_in_all_adj, remove_attn, training, beta])
+            X = layer(X, A=A, distance_mat=distance_mat, distance_mask=distance_mask, add_self_loops=use_self_loops_in_all_adj, remove_attn=remove_attn, training=training, beta=beta)
         return X
 
 
@@ -111,8 +111,8 @@ class GraphPool(tf.keras.layers.Layer):
         self.kernel_constraint = constraints.get(kernel_constraint)
 
     def build(self, input_shape):
-        self.F = input_shape[0][-1]
-        self.N = input_shape[0][0]
+        self.F = input_shape[-1]
+        self.N = input_shape[0]
         self.kernel = self.add_weight(shape=(self.F, 1),
                                       name='kernel',
                                       initializer=self.kernel_initializer,
@@ -126,10 +126,9 @@ class GraphPool(tf.keras.layers.Layer):
         # return b
         return K.dot(X, K.l2_normalize(self.kernel))
 
-    def call(self, inputs):
+    def call(self, X, A, training):
         print("Droupout training flag not implemented. Implement it similar to GraphAttentionLayer")
         exit(-1)
-        X, A, training = inputs
 
         # 1. Get score
         y = self.compute_scores(X)

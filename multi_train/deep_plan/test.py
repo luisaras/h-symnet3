@@ -79,7 +79,7 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
     train_summary_writer = None
     val_summary_writer = None
 
-    policynet_optim = tf.keras.optimizers.RMSprop(lr=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
+    policynet_optim = tf.keras.optimizers.RMSprop(learning_rate=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
 
     env_instance_wrapper_all = EnvInstanceWrapper(envs_)
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim, instances=[test_instance], env_instance_wrapper=env_instance_wrapper_all)
@@ -169,7 +169,7 @@ if __name__ == '__main__':
             my_config.test_instance = ",".join([str(910+i) for i in range(40)])
         else:
             my_config.test_instance = ",".join([str(1110+i) for i in range(40)])
-    else:
+    elif my_config.setting == "lr":
         my_config.test_instance = ",".join([str(3200+i) for i in range(0, 200)])
         if my_config.domain == 'navigation':
             my_config.test_instance = ",".join([str(2200+i) for i in range(200)])
@@ -178,10 +178,10 @@ if __name__ == '__main__':
     ckpt = 1
     best_ckpt, best_rew = 1, -1000000
     for line in ptr.readlines()[2:]:
-        if my_config.mode == "ippc":
-            toks = line.split(",")[:10] # 10 val instances in ippc
-        else:
+        if my_config.setting == "lr":
             toks = line.split(",")[:100] # 100 val instances in lr
+        else:
+            toks = line.split(",")[:10] # 10 val instances in ippc
         rew = np.mean([float(x) for x in toks])
         if rew > best_rew:
             best_rew = rew

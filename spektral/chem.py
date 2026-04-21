@@ -3,10 +3,11 @@ import numpy as np
 try:
     from rdkit import Chem as rdc
     from rdkit.Chem import Draw
-    from rdkit import rdBase as rdb
-
-    rdb.DisableLog('rdApp.error')  # RDKit logging is disabled by default
-    Draw.DrawingOptions.dblBondOffset = .1
+    from rdkit.Chem.Draw import rdMolDraw2D
+    from rdkit import RDLogger
+    RDLogger.DisableLog('rdApp.error')
+    _draw_options = rdMolDraw2D.MolDrawOptions()
+    _draw_options.bondLineWidth = 1.5
     BOND_MAP = {0: rdc.rdchem.BondType.ZERO,
                 1: rdc.rdchem.BondType.SINGLE,
                 2: rdc.rdchem.BondType.DOUBLE,

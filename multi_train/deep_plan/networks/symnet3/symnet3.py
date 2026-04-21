@@ -130,7 +130,7 @@ class SymNet3(tf.keras.Model):
             global_embed_temp = global_embed
             
             if len(arg_nodes) == 0:  # Unparametrized action
-                action_scores[i] = self.action_decoders[action_template]([global_embed_temp, None, training])
+                action_scores[i] = self.action_decoders[action_template](global_embed_temp, global_embed=None, training=training)
             else:
                 if len(input_nodes) > 0:
                     temp_embedding_list = [  # Select embeddings of nodes used
@@ -140,21 +140,21 @@ class SymNet3(tf.keras.Model):
                     node_state_embedding_pooled = tf.reshape(tf.reduce_max(node_state_embedding_reshape, axis=1), [batch_size, self.num_action_dim])  # Max Pool
                     arg_embedding_list = [tf.reshape(final_node_embedding[:, inp, :], [batch_size, self.num_action_dim]) for inp in arg_nodes]
                     node_state_embedding_pooled = tf.concat(arg_embedding_list + [node_state_embedding_pooled], axis=1)
-                    action_scores[i] = self.action_decoders[action_template]([node_state_embedding_pooled, global_embed_temp, training])
+                    action_scores[i] = self.action_decoders[action_template](node_state_embedding_pooled, global_embed=global_embed_temp, training=training)
                 else:
                     if remove_dbn:
                         arg_embedding_list = [tf.reshape(final_node_embedding[:, inp, :], [batch_size, self.num_action_dim]) for inp in arg_nodes]
-                        action_scores[i] = self.action_decoders[action_template]([tf.concat(arg_embedding_list, axis=1), global_embed_temp, training])
+                        action_scores[i] = self.action_decoders[action_template](tf.concat(arg_embedding_list, axis=1), global_embed=global_embed_temp, training=training)
                     else:
                         gnd_action_affects = action_affects[action_template]
                         # Wildfire case; Treat as NOOP
                         if gnd_action_affects:
                             # IF wildfire
                             action_template = action_details[0][0]
-                            action_scores[i] = self.action_decoders[action_template]([global_embed_temp, None, training])
+                            action_scores[i] = self.action_decoders[action_template](global_embed_temp, global_embed=None, training=training)
                         else:
                             arg_embedding_list = [tf.reshape(final_node_embedding[:, inp, :], [batch_size, self.num_action_dim]) for inp in arg_nodes]
-                            action_scores[i] = self.action_decoders[action_template]([tf.concat(arg_embedding_list + [tf.zeros([batch_size, self.num_action_dim], tf.float64)], axis= 1), global_embed_temp, training])
+                            action_scores[i] = self.action_decoders[action_template](tf.concat(arg_embedding_list + [tf.zeros([batch_size, self.num_action_dim], tf.float64)], axis= 1), global_embed=global_embed_temp, training=training)
         action_scores = tf.concat(action_scores, axis=-1)
 
         if sample:
@@ -184,12 +184,12 @@ class SymNet3(tf.keras.Model):
             if self.use_edge_types:
                 for i, se in enumerate(self.se_list_preprocess):
                     # res = se(node_features, adjacency_matrix[i], use_self_loops_in_all_adj, remove_attn) INITIAL ERROR
-                    res = se(node_features, adjacency_matrix, use_self_loops_in_all_adj, remove_attn)
+                    res = se(node_features, A=adjacency_matrix, use_self_loops_in_all_adj=use_self_loops_in_all_adj, remove_attn=remove_attn)
                     se_embed_l.append(res)
                 node_features = tf.concat(se_embed_l, axis=-1)
             else:
                 for i, se in enumerate(self.se_list_preprocess):
-                    res = se(node_features, adjacency_matrix[i], use_self_loops_in_all_adj, remove_attn) # INITIAL ERROR
+                    res = se(node_features, A=adjacency_matrix[i], use_self_loops_in_all_adj=use_self_loops_in_all_adj, remove_attn=remove_attn) # INITIAL ERROR
                     # res = se(node_features, adjacency_matrix, use_self_loops_in_all_adj, remove_attn)
                     se_embed_l.append(res)
                 node_features = tf.concat(se_embed_l, axis=-1)
@@ -208,11 +208,11 @@ class SymNet3(tf.keras.Model):
         
         se_embed_l = []
         if self.use_edge_types:
-            res = self.se_list_postprocess[0](node_features, adjacency_matrix, use_self_loops_in_all_adj, remove_attn)
+            res = self.se_list_postprocess[0](node_features, A=adjacency_matrix, use_self_loops_in_all_adj=use_self_loops_in_all_adj, remove_attn=remove_attn)
             se_embed_l.append(res)
         else:
             for i, se in enumerate(self.se_list_postprocess):
-                res = se(node_features, adjacency_matrix[i], use_self_loops_in_all_adj, remove_attn)
+                res = se(node_features, adjacency_matrix[i], use_self_loops_in_all_adj=use_self_loops_in_all_adj, remove_attn=remove_attn)
                 se_embed_l.append(res)
         if return_attn_coef:
             return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, instance, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions), dist_attn_coef

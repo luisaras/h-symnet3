@@ -12,24 +12,26 @@ LR domains:
 academic_advising_prob(EAcad), navigation(DNav), corridor(StNav), recon(SRecon), pizza_delivery_windy(Pizza), stochastic_wall(StNav)
 '''
 
-setting = "ippc" # Set to ippc to run on ippc domains and lr to run on lr domains
+setting = "custom" # Set to ippc to run on ippc domains and lr to run on lr domains
 exp_description = "standard" # suffix for model folder
-domain = "navigation" # Domain to be tested on
+domain = "sysadmin" # Domain to be tested on
 model_dir =  "models/" # Path to model
 
 num_validation_episodes = 5 # Validation episodes for each epoch
 num_testing_episodes = 30 # Testing episodes when model has been trained
 
-train_instance = "" # These two flags are set automatically when you run train.py
-test_instance = ""
+#train_instance = "" # These two flags are set automatically when you run train.py
+#test_instance = ""
+train_instance = ",".join([str(1+i) for i in range(3)])
+test_instance = ",".join(str(1+i) for i in range(10))
 
-trajectory_dataset_folder = "../../data/datasets/IPPC_2014"
+trajectory_dataset_folder = "../../data/datasets/"
 max_transitions_per_instance = 300
 last_in_dataset = False # Setting to true might lead to better results since PROST learns while executing
 
 batch_size = 32
 train_epochs = 10
-ckpt_freq = 1
+ckpt_freq = 10
 lr = 0.001
 use_pretrained = True
 grad_clip_value = 5.0
@@ -44,7 +46,7 @@ split_dbn = False
 use_type_encoding = True
 use_fluent_for_kl = True
 num_threads = 4 # Number of threads to parallelize inference
-mode = "no_kl"
+mode = "no_dist"
 
 if mode == 'no_dist': # SymNet2.0
     add_aux_loss = False
