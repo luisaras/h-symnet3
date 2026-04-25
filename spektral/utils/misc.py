@@ -2,7 +2,7 @@ import numpy as np
 from scipy import sparse as sp
 
 
-def pad_jagged_array(x, target_shape, dtype=float):
+def pad_jagged_array(x, target_shape, dtype=np.float):
     """
     Given a jagged array of arbitrary dimensions, zero-pads all elements in the
     array to match the provided `target_shape`.

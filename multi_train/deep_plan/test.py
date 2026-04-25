@@ -79,7 +79,7 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
     train_summary_writer = None
     val_summary_writer = None
 
-    policynet_optim = tf.keras.optimizers.RMSprop(learning_rate=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
+    policynet_optim = tf.keras.optimizers.RMSprop(lr=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
 
     env_instance_wrapper_all = EnvInstanceWrapper(envs_)
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim, instances=[test_instance], env_instance_wrapper=env_instance_wrapper_all)

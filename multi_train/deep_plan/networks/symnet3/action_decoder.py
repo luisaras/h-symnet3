@@ -26,12 +26,13 @@ class ActionDecoder(Layer):
 		elif activation == "lrelu":
 			return tf.nn.leaky_relu
 
-	def call(self, node_embed, global_embed, training):
+	def call(self, inputs):
 		"""
 		:param inputs: [node_embed, global_embed] or [global_embed, None] for parametrized and non-parameterized nodes.
 		Shape of both = [num_node, F]
 		:return:
 		"""
+		node_embed, global_embed, training = inputs
 		if self.use_ge and global_embed is not None:
 			# Concat node and global embeddings
 			# num_nodes = node_embed.shape[1]
@@ -41,7 +42,7 @@ class ActionDecoder(Layer):
 		# node_embed = self.dropout_layer(node_embed, training)
 		if self.type == "symnet":
 			node_embed = self.layer1(node_embed)
-			node_embed = self.dropout_layer(node_embed, training=training)
+			node_embed = self.dropout_layer(node_embed, training)
 			node_embed = self.layer2(node_embed)
 			return node_embed
 

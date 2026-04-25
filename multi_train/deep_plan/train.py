@@ -85,7 +85,7 @@ def train():
     train_summary_writer = None
     val_summary_writer = None
 
-    policynet_optim = tf.keras.optimizers.Adam(learning_rate=my_config.lr)
+    policynet_optim = tf.keras.optimizers.Adam(lr=my_config.lr)
 
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim)
     helper.add_network_args(args, envs_[0],MODEL_DIR)

@@ -1,4 +1,5 @@
 import sys, os, io, ast, argparse
+import numpy as np
 from pathlib import Path
 from contextlib import redirect_stdout
 
@@ -11,10 +12,10 @@ def parse_arguments():
         "by environment variable SYMNET_ROOT.",
         formatter_class=formatter,
     )
-    parser.add_argument("domain", help="Domain name.")
-    parser.add_argument("--train", action="store_true", help="Train before testing.")
-    parser.add_argument("--ckpt", type=int, help="Model checkpoint", default=None)
-    parser.add_argument("--epochs", type=int, help="Train epochs", default=200)
+    parser.add_argument("domain", help="domain name")
+    parser.add_argument("-m", "--model", help="model type", default="standard")
+    parser.add_argument("-e", "--epochs", type=int, help="train epochs", default=None)
+    parser.add_argument("-r", "--restore", help="load from checkpoint instead of training from scratch", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -30,25 +31,28 @@ if __name__ == "__main__":
     my_config.domain = args.domain
     my_config.train_instance = ",".join([str(i+1) for i in range(3)])
     my_config.test_instance = ",".join([str(i+1) for i in range(10)])
+    my_config.exp_description = args.model
     my_config.trained_model_path = os.path.join(my_config.model_dir, f'{my_config.domain}_{my_config.exp_description}')
-    my_config.train_epochs = 200
-    if args.ckpt is None:
-    	ckpt = 0
-    	path = Path(os.path.join(my_config.trained_model_path, "checkpoints"))
-    	if path.exists():
-    		for file in path.glob('*.index'):
-    			i = int(file.stem.replace("ckpt-", ""))
-    			if i > ckpt:
-    				ckpt = i
-    	my_config.exact_checkpoint = str(ckpt)
-    else:
-    	my_config.exact_checkpoint = str(args.ckpt)
+    my_config.use_pretrained = args.restore
 
-    if args.train:
+    if args.epochs:
         import train
-        my_config.use_pretrained = False if my_config.exact_checkpoint == "0" else True
+        my_config.train_epochs = args.epochs
         train.train()
-
-    my_config.train_instance = ""
-    print("Exact checkpoint:", my_config.exact_checkpoint)
-    test.test()
+    else:
+        my_config.train_instance = ""
+        ptr = open(f'{my_config.trained_model_path}/meta_logging.csv')
+        ckpt = 1
+        best_ckpt, best_rew = 1, -1000000
+        for line in ptr.readlines()[2:]:
+            if my_config.setting == "lr":
+                toks = line.split(",")[:100] # 100 val instances in lr
+            else:
+                toks = line.split(",")[:10] # 10 val instances in ippc
+            rew = np.mean([float(x) for x in toks])
+            if rew > best_rew:
+                best_rew = rew
+                best_ckpt = ckpt
+            ckpt += 1
+        my_config.exact_checkpoint = str(best_ckpt)
+        test.test()

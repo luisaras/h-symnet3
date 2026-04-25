@@ -658,9 +658,7 @@ class InstanceParser(object):
         self.extended_adjacency_lists = deepcopy(self.adjacency_lists)
         for strrr in [self.det_str, self.prob_str]:  # For state fluents in deterministic and probablistic
             for ac in strrr:
-                #g1'(o_v)
                 state_var = ac[2].replace(' ', '')
-                #argument o_v
                 state_var_ob = state_var.split('(')[-1].replace('(', '').replace(')', '')
                 formula = ac[9].strip()
 
@@ -692,29 +690,29 @@ class InstanceParser(object):
                         i = j + 1
                     else:
                         i += 1
-                # $a(123)$s(456)
                 dependencies = [re.findall('\$a\(\d+\).*?\$s\(\d+\)', bac) for bac in brackets if '$c(0)' not in bac]
-                for ininin in dependencies: #stuff mentioned in the formula
+                for ininin in dependencies:
                     for dep in ininin:
                         try:
                             ac_num, st_num = tuple(map(int, re.findall('\d+', dep)))
                         except ValueError:
                             continue
                         ac_num += 1
-                        ac = self.num_to_action[ac_num].replace(' ', '') # a_j
-                        st = self.num_to_state[st_num].replace(' ', '') # f(o_u)/f'(o_u)
-                        ac_temp = self.action_template_to_num[ac.split('(')[0]] # action symbol (o_a discarded)
+                        ac = self.num_to_action[ac_num].replace(' ', '')
+                        st = self.num_to_state[st_num].replace(' ', '')
+                        ac_temp = self.action_template_to_num[ac.split('(')[0]]
                         try:
-                            st_ob = re.findall('\(.*?\)', st)[0][1:-1] # o_u
+                            st_ob = re.findall('\(.*?\)', st)[0][1:-1]
                         except IndexError:
                             continue
                         try:
                             if self.node_dict[state_var_ob] not in self.adjacency_lists[ac_temp]:
                                 self.adjacency_lists[ac_temp][self.node_dict[state_var_ob]] = [self.node_dict[st_ob]]
                             else:
-                                adj_list = self.adjacency_lists[ac_temp][self.node_dict[state_var_ob]]
-                                if self.node_dict[st_ob] not in adj_list:
-                                    adj_list.append(self.node_dict[st_ob])
+                                if self.node_dict[st_ob] not in self.adjacency_lists[ac_temp][
+                                    self.node_dict[state_var_ob]]:
+                                    self.adjacency_lists[ac_temp][self.node_dict[state_var_ob]].append(
+                                        self.node_dict[st_ob])
                         except KeyError:
                             # Adding unparameterised state fluents
                             self.unpara_fluents.add(state_var_ob)
@@ -754,12 +752,13 @@ class InstanceParser(object):
             if i not in self.extended_adjacency_lists[0].keys():
                 self.extended_adjacency_lists[0][i] = []
 
-        for a, b, c in sorted(self.para_action_connections): #toobj fromobj, fromvar
-            action_adj_list = self.extended_adjacency_lists[self.action_template_to_num[c]]
-            if self.extended_node_dict[b] not in action_adj_list.keys():
-                action_adj_list[self.extended_node_dict[b]] = [self.extended_node_dict[a]]
+        for a, b, c in sorted(self.para_action_connections):
+            if self.extended_node_dict[b] not in self.extended_adjacency_lists[self.action_template_to_num[c]].keys():
+                self.extended_adjacency_lists[self.action_template_to_num[c]][self.extended_node_dict[b]] = [
+                    self.extended_node_dict[a]]
             else:
-                action_adj_list[self.extended_node_dict[b]].append(self.extended_node_dict[a])
+                self.extended_adjacency_lists[self.action_template_to_num[c]][self.extended_node_dict[b]].append(
+                    self.extended_node_dict[a])
 
         if my_config.merged_model:
             pass

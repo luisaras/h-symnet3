@@ -1,5 +1,5 @@
 import logging
-import importlib
+import pkg_resources
 import re
 from gym import error
 import warnings
@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 env_id_re = re.compile(r'^(?:[\w:-]+\/)?([\w:.-]+)-v(\d+)$')
 
 def load(name):
-    module_name, attr = name.split(":")
-    module = importlib.import_module(module_name)
-    return getattr(module, attr)
+    entry_point = pkg_resources.EntryPoint.parse('x={}'.format(name))
+    result = entry_point.load(False)
+    return result
 
 class EnvSpec(object):
     """A specification for a particular instance of the environment. Used

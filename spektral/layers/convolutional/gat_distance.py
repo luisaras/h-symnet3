@@ -55,7 +55,8 @@ class GraphAttentionDistance(GraphConv):
             self.output_dim = self.channels
 
     def build(self, input_shape):
-        input_dim = input_shape[-1]
+        assert len(input_shape) >= 2
+        input_dim = input_shape[0][-1]
         self.kernel = self.add_weight(
             name='kernel',
             shape=[input_dim, self.attn_heads, self.channels],
@@ -104,7 +105,15 @@ class GraphAttentionDistance(GraphConv):
         self.dropout = Dropout(self.dropout_rate)
         self.built = True
 
-    def call(self, X, A, distance_mat, distance_mask, add_self_loops, remove_attn, training):
+    def call(self, inputs):
+        X = inputs[0]
+        A = inputs[1]
+        distance_mat = inputs[2]
+        distance_mask = inputs[3]
+        add_self_loops = inputs[4]
+        remove_attn = inputs[5]
+        training = inputs[6]
+
         output, attn_coef = self._call_dense(X, A, distance_mat, distance_mask, add_self_loops, remove_attn, training=training)
 
         if self.return_attn_coef:

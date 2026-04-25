@@ -81,7 +81,7 @@ def load_dot(filename, force_graph=True):
                 elem[k] = np.array(' '.join(v.lstrip('[')
                                              .rstrip(']')
                                              .split())
-                                      .split(' ')).astype(float)
+                                      .split(' ')).astype(np.float)
 
     for elem in output.edges().values():
         for k, v in elem.items():

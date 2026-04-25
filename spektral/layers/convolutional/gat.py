@@ -130,7 +130,8 @@ class GraphAttention(GraphConv):
             self.output_dim = self.channels
 
     def build(self, input_shape):
-        input_dim = input_shape[-1]
+        assert len(input_shape) >= 2
+        input_dim = input_shape[0][-1]
 
         self.kernel = self.add_weight(
             name='kernel',
@@ -173,7 +174,13 @@ class GraphAttention(GraphConv):
         self.dropout = Dropout(self.dropout_rate)
         self.built = True
 
-    def call(self, X, A, add_self_loops, remove_attn, training, beta=1):
+    def call(self, inputs):
+        X = inputs[0]
+        A = inputs[1]
+        add_self_loops = inputs[2]
+        remove_attn = inputs[3]
+        training = inputs[4]
+        beta = inputs[5] if len(inputs) == 6 else 1
 
         mode = ops.autodetect_mode(A, X)
         if mode == modes.SINGLE and K.is_sparse(A):
