@@ -5,16 +5,13 @@ pandas==1.5.3
 matplotlib==3.7.1
 networkx==2.8.8
 
-# ML
+# ML & Algorithms
 tensorflow==2.13.0
 scikit-learn==1.3.0
 joblib>=1.1.1
-
-# GNN lib (likely used by your project)
-spektral==1.2.0
-
-# Chemistry
 rdkit==2023.3.2
+spektral==1.2.0
+rl_algs==0.0.0
 
 # Utilities
 requests==2.31.0
@@ -26,6 +23,4 @@ six==1.16.0
 pytest==7.4.0
 mock==5.1.0
 setuptools==68.2.2
-
-rl_algs==0.0.0
 pygame==2.5.0

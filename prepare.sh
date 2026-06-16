@@ -3,6 +3,7 @@
 
 set -e
 
+declare -a new_domains=("academic_advising_chain" "academic_advising_prob" "pizza_delivery" "pizza_delivery_grid" "pizza_delivery_windy" "wall" "stochastic_navigation" "stochastic_wall" "corridor")
 declare -a domains=("academic_advising" "crossing_traffic" "game_of_life" "navigation" "skill_teaching" "sysadmin" "tamarisk" "traffic" "wildfire" "recon" "triangle_tireworld" "elevators")
 declare -a instances=($(seq 1 10))
 
@@ -38,6 +39,6 @@ if [ ! -d "data" ]; then
 		do
 			python $PROST_ROOT ${d}_inst_mdp__${i} [Prost -s 1 -se [IPC2014]] >> data/logs/${d}/${i}.result
 	    done
-	    python multi_train/deep_plan/dataset_builder.py --domain ${d} --save_folder "data/datasets/${d}" --prost_log data/logs/${d} --start_instance 0 --num_instances 10
+	    python prost/dataset_builder.py --domain ${d} --save_folder "data/datasets/${d}" --prost_log data/logs/${d} --start_instance 0 --num_instances 10
 	done
 fi

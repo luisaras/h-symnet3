@@ -143,7 +143,6 @@ def test():
     for i in range(len(test_instances)):
         rewards_all_instances.append(output_dict[i])
 
-    
     total_rewards = np.array(rewards_all_instances)
 
     csv_file = os.path.abspath(os.path.join(my_config.trained_model_path, "results.csv"))
@@ -160,6 +159,8 @@ def test():
                             current_rewards])
 
 if __name__ == '__main__':
+    config_file = sys.argv[1] if len(sys.argv) > 1 else None
+    helper.load_config(config_file)
 
     my_config.trained_model_path = os.path.join(my_config.model_dir, f'{my_config.domain}_{my_config.exp_description}')
     my_config.train_instance = ""
@@ -174,20 +175,21 @@ if __name__ == '__main__':
         if my_config.domain == 'navigation':
             my_config.test_instance = ",".join([str(2200+i) for i in range(200)])
 	
-    ptr = open(f'{my_config.trained_model_path}/meta_logging.csv')
-    ckpt = 1
-    best_ckpt, best_rew = 1, -1000000
-    for line in ptr.readlines()[2:]:
-        if my_config.setting == "lr":
-            toks = line.split(",")[:100] # 100 val instances in lr
-        else:
-            toks = line.split(",")[:10] # 10 val instances in ippc
-        rew = np.mean([float(x) for x in toks])
-        if rew > best_rew:
-            best_rew = rew
-            best_ckpt = ckpt
-        ckpt += 1
-        
-    my_config.exact_checkpoint = str(best_ckpt)
+    if not my_config.exact_checkpoint:
+        ptr = open(f'{my_config.trained_model_path}/meta_logging.csv')
+        ckpt = 1
+        best_ckpt, best_rew = 1, -1000000
+        for line in ptr.readlines()[2:]:
+            if my_config.setting == "lr":
+                toks = line.split(",")[:100] # 100 val instances in lr
+            else:
+                toks = line.split(",")[:10] # 10 val instances in ippc
+            rew = np.mean([float(x) for x in toks])
+            if rew > best_rew:
+                best_rew = rew
+                best_ckpt = ckpt
+            ckpt += 1
+        my_config.exact_checkpoint = str(best_ckpt)
+
     print("Exact checkpoint:", my_config.exact_checkpoint)
     test()

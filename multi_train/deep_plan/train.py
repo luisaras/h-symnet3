@@ -63,7 +63,7 @@ def train_step(network, x, y, instance, env_instance_wrapper, loss_fn, optimizer
         optimizer.apply_gradients(zip(grads_of_policynet[0], network.trainable_variables))
         return policynet_loss
 
-def train():
+def train(MODEL_DIR, CHECKPOINT_DIR):
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
 
@@ -79,37 +79,35 @@ def train():
 
     train_instances, N_train_instances, test_instances, N_test_instances, instances = helper.get_instance_names()
     envs_ = helper.make_envs(instances)
-    num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list = helper.get_env_metadata(envs_)
-    MODEL_DIR, CHECKPOINT_DIR, train_summary_path, val_summary_path = helper.get_model_dir()
-    NUM_WORKERS = 1
-    train_summary_writer = None
-    val_summary_writer = None
+    #num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list = helper.get_env_metadata(envs_)
 
+    print("Envs created.")
     policynet_optim = tf.keras.optimizers.Adam(lr=my_config.lr)
 
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim)
-    helper.add_network_args(args, envs_[0],MODEL_DIR)
+    helper.add_network_args(args, envs_[0], MODEL_DIR)
 
     model_factory = ModelFactory(args)
     env_instance_wrapper = EnvInstanceWrapper(envs_[:N_train_instances])
 
     network = model_factory.create_network(env_instance_wrapper)
     network.init_network(env_instance_wrapper, 0)
+    print("Network created.")
 
-    # Create policy_monitor
     network_copy = model_factory.create_network(env_instance_wrapper)
     pe = PolicyMonitor(
         envs=helper.make_envs(test_instances),
         network=network,
         domain=my_config.domain,
         instances=instances,
-        summary_writer=val_summary_writer,
+        summary_writer=None,
         model_factory=model_factory,
         network_copy=network_copy)
 
     network.init_network(env_instance_wrapper, 0)
     pe.network_copy.init_network(env_instance_wrapper, 0)
     pe.copy_params()
+    print("Created policy monitor.")
 
     for e in envs_:
         e.close()
@@ -124,13 +122,15 @@ def train():
 
     if my_config.use_pretrained:
         model_factory.load_ckpt(ckpt_num=None)
-
+        print("Loaded model from checkpoint: " + str(model_factory.ckpt_manager.latest_checkpoint))
 
     # SUPERVISED TRAINING STARTS
     # Training dataset
     dataset_folder = my_config.trajectory_dataset_folder
     batch_size = my_config.batch_size
     dataset_ob = SupervisedDataset(train_instances, env_instance_wrapper, dataset_folder, batch_size, num_episodes=None)
+    print("Loading datasets.")
+
     # Loss Function
     loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     grad_clip_value = model_factory.grad_clip_value
@@ -176,25 +176,28 @@ def train():
                 print("Instance %d \t| Total steps: %d | Imitation loss: %.4f" % (ins, step-1, float(loss_value)))
             
         # Validation
-        if epoch%my_config.ckpt_freq == my_config.ckpt_freq-1:
+        if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
             pe.copy_params()
             _, _, eval_time, total_rewards, save_path = pe.eval_once(meta_logging=True, num_episodes=my_config.num_validation_episodes)
-            if np.mean(total_rewards) <= best_val_reward:
-                os.remove(save_path + ".index")
-                os.remove(save_path + ".data-00000-of-00001")
-                print(f"This checkpoint has a reward of {np.mean(total_rewards)}, best is {best_val_reward}, deleting this.")
-            else:
-                if best_ckpt != "":
-                    os.remove(best_ckpt + ".index")
-                    os.remove(best_ckpt + ".data-00000-of-00001")
-                best_ckpt = save_path
-                print(f"This checkpoint has a reward of {np.mean(total_rewards)}, best was {best_val_reward}, deleting previous.")
+            val_reward = np.mean(total_rewards)
+            print(f"This checkpoint has a reward of {val_reward}, best is {best_val_reward}.")
+            if not my_config.keep_ckpts:
+                if val_reward <= best_val_reward:
+                    os.remove(save_path + ".index")
+                    os.remove(save_path + ".data-00000-of-00001")
+                    print("Deleting this.")
+                else:
+                    if best_ckpt != "":
+                        os.remove(best_ckpt + ".index")
+                        os.remove(best_ckpt + ".data-00000-of-00001")
+                    best_ckpt = save_path
+                    print("Deleting previous.")
+            best_val_reward = max(best_val_reward, val_reward)
                 
-            best_val_reward = max(best_val_reward, np.mean(total_rewards))
-                
-
 
 if __name__ == '__main__':
+    config_file = sys.argv[1] if len(sys.argv) > 1 else None
+    helper.load_config(config_file)
     
     if my_config.setting == "ippc":
         my_config.train_instance = ",".join(str(900+i) for i in range(20))   
@@ -230,8 +233,9 @@ if __name__ == '__main__':
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2211])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
 
-    
+    MODEL_DIR, CHECKPOINT_DIR, _, _ = helper.get_model_dir(config_file)
+
     print("Domain: ", my_config.domain)
     print("Model dir: ", my_config.model_dir)
     print(my_config.train_instance, my_config.test_instance)
-    train()
+    train(MODEL_DIR, CHECKPOINT_DIR)

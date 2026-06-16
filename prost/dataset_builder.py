@@ -42,9 +42,11 @@ def create_dataset(domain, start_instance, num_instances, prost_log, save_folder
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--domain", help="name of the domain")
-	parser.add_argument("--start_instance", help="starting instance number", type=int)
+	parser.add_argument("--start_instance", type=int, default="0",
+		help="starting instance number")
 	parser.add_argument("--num_instances", help="number of instances to build dataset for", type=int)
-	parser.add_argument("--prost_log", help="path of prost logs")
+	parser.add_argument("--prost_log", default=".",
+		help="path of prost logs")
 	parser.add_argument("--save_folder", help="folder to save dataset")
 	args = parser.parse_args()
 

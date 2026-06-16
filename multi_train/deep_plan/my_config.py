@@ -1,4 +1,3 @@
-config_file = __file__
 # ==============================================
 # General settings for flags
 # ==============================================
@@ -32,6 +31,7 @@ last_in_dataset = False # Setting to true might lead to better results since PRO
 batch_size = 32
 train_epochs = 10
 ckpt_freq = 10
+keep_ckpts = False
 lr = 0.001
 use_pretrained = True
 grad_clip_value = 5.0
@@ -48,15 +48,4 @@ use_fluent_for_kl = True
 num_threads = 4 # Number of threads to parallelize inference
 mode = "no_dist"
 
-if mode == 'no_dist': # SymNet2.0
-    add_aux_loss = False
-    decay_aux_loss = False
-elif mode == "kl": # SymNet3.0+KL
-    add_aux_loss = True
-    decay_aux_loss = False
-elif mode == "no_kl": # SymNet3.0-KL 
-    add_aux_loss = False
-    decay_aux_loss = False
-elif mode == "kl_decay": # SymNet3.0+KL_{decay}
-    add_aux_loss = True
-    decay_aux_loss = True
+net_config=None # custom symnet3_config.py

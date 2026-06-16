@@ -12,6 +12,34 @@ if gym_path not in sys.path:
 	sys.path = [gym_path] + sys.path
 import gym
 
+def load_config(file=None):
+	if file:
+		with open(file, "r") as file:
+			file_content = file.read()
+			exec(file_content, globals(), my_config.__dict__)
+	if my_config.mode == 'no_dist': # SymNet2.0
+		my_config.add_aux_loss = False
+		my_config.decay_aux_loss = False
+	elif my_config.mode == "kl": # SymNet3.0+KL
+		my_config.add_aux_loss = True
+		my_config.decay_aux_loss = False
+	elif my_config.mode == "no_kl": # SymNet3.0-KL 
+		my_config.add_aux_loss = False
+		my_config.decay_aux_loss = False
+	elif my_config.mode == "kl_decay": # SymNet3.0+KL_{decay}
+		my_config.add_aux_loss = True
+		my_config.decay_aux_loss = True
+	if my_config.net_config:
+		with open(my_config.net_config, "r") as file:
+			file_content = file.read()
+			exec(file_content, globals(), symnet3_config.__dict__)
+	if my_config.mode == "no_dist":
+		symnet3_config.se_params["use_preprocess_layer"] = False
+		symnet3_config.se_params["num_preprocess"] = 4 # Filter size in each GAT (num of
+		symnet3_config.se_params["num_postprocess"] = 4 # Filter size in each GAT (num of
+		symnet3_config.se_params["use_distance_mat"] = False
+		symnet3_config.se_params["use_preprocess_layer"] = False
+
 def get_instance_names():
 	train_instances,test_instances = [],[]
 	for instance_num in my_config.train_instance.strip().split(","):
@@ -45,7 +73,7 @@ def get_env_metadata(envs_):
 		num_adjacency_list.append(env_.get_num_adjacency_list())
 	return num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list
 
-def get_model_dir():
+def get_model_dir(config_file=None):
 	MODEL_DIR = my_config.model_dir
 	model_suffix = f"{my_config.domain}_{my_config.exp_description}"
 	MODEL_DIR = os.path.abspath(os.path.join(MODEL_DIR, model_suffix))
@@ -59,6 +87,9 @@ def get_model_dir():
 
 	# init_meta_logging
 	shutil.copy(os.path.abspath("my_config.py"), MODEL_DIR)
+	if config_file:
+		shutil.copy(os.path.abspath(config_file), MODEL_DIR + "/config_mods.py")
+
 	shutil.copy(os.path.abspath("policy_monitor.py"), MODEL_DIR)
 	shutil.copy(os.path.abspath("networks/symnet3/symnet3.py"), MODEL_DIR)
 
@@ -108,6 +139,8 @@ def add_network_args(args, env, MODEL_DIR, copy_config=True):
 
 	if copy_config:
 		shutil.copy(os.path.abspath("symnet3_config.py"), MODEL_DIR)
+		if my_config.net_config:
+			shutil.copy(os.path.abspath(my_config.net_config), MODEL_DIR + "/symnet3_config_mods.py")
 
 def get_adj_mat_from_list(adjacency_list):
 	l = len(adjacency_list)

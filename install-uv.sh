@@ -3,6 +3,7 @@
 
 set -e
 
+ENVNAME=~/.symnet_env
 if [[ ! -v ${RDDLSIM_ROOT} ]]; then
   export RDDLSIM_ROOT=../rddlsim
 fi
@@ -13,8 +14,35 @@ if [[ ! -v ${Z3_ROOT} ]]; then
   export Z3_ROOT=../z3-master
 fi
 
-command -v podman >/dev/null 2>&1 || { echo "Error: podman is not installed." >&2; exit 1; }
-podman build -t symnet-env .
+if ! command -v python3.10 &>/dev/null; then
+    # Python3.10 not installed
+    if ! command -v uv &>/dev/null; then
+        echo "=== Installing uv ==="
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    fi
+    echo "uv installed."
+
+    echo "=== Installing Python3.10 ==="
+    uv python install 3.10
+fi
+echo "Python3.10 installed."
+
+if [[ ! -d "$ENVNAME" ]]; then
+    uv venv $ENVNAME --python 3.10
+    echo "Virtual environment $ENVNAME created."
+    nvidia_lib=$PWD/$ENVNAME/lib/python3.10/site-packages/nvidia
+    echo "export LD_LIBRARY_PATH=$nvidia_lib/cuda_runtime/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+    echo "export LD_LIBRARY_PATH=$nvidia_lib/cublas/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+    echo "export LD_LIBRARY_PATH=$nvidia_lib/cudnn/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+fi
+source $ENVNAME/bin/activate
+echo "Virtual environment $ENVNAME activated."
+
+echo "=== Installing Requirements... ==="
+uv pip install -r requirements.txt
+uv pip install nvidia-cuda-runtime-cu11
+uv pip install nvidia-cudnn-cu11
+uv pip install nvidia-cublas-cu11
 
 if [[ ! -d "$RDDLSIM_ROOT" ]]; then
     echo "=== Installing RDDLSIM... ==="

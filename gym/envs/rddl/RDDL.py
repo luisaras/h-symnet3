@@ -1,6 +1,8 @@
 import sys
 import os
 import random
+#import faulthandler
+#faulthandler.enable()
 import ctypes
 import numpy as np
 import gym
@@ -40,27 +42,31 @@ class RDDLEnv(Env):
 		self._seed()
 
 		# f = open(os.path.abspath(os.path.join(os.path.dirname(__file__), './rddl/parsed/',self.problem)))
-		f = open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../rddl/parsed/',self.problem)))
+		parsed_file_name = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../rddl/parsed/', self.problem))
+		if not os.path.isfile(parsed_file_name):
+			print("File not found: " + parsed_file_name)
+			sys.exit(-1)
 
-		p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
-		for l in f:
-			if (p == "## horizon\n"):
-				h = int(l)
-			elif (p == "## number of actions\n"
-				and self.domain != 'academic_advising_mdp'):
-				num_act = int(l)
-			elif (p == "## number of action fluents\n"
-				and self.domain == 'academic_advising_mdp'):
-				num_act = int(l) + 1
-			elif (p == "## number of det state fluents\n"):
-				num_det = int(l)
-			elif (p == "## number of prob state fluents\n"):
-				num_prob = int(l)
-			elif (p == "## initial state\n"):
-				init = [int(i) for i in l.split()]
-				break
-			p = l
-		f.close()
+		with open(parsed_file_name, "r") as f:
+			p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
+			for l in f:
+				if (p == "## horizon\n"):
+					h = int(l)
+				elif (p == "## number of actions\n"
+					and self.domain != 'academic_advising_mdp'):
+					num_act = int(l)
+				elif (p == "## number of action fluents\n"
+					and self.domain == 'academic_advising_mdp'):
+					num_act = int(l) + 1
+				elif (p == "## number of det state fluents\n"):
+					num_det = int(l)
+				elif (p == "## number of prob state fluents\n"):
+					num_prob = int(l)
+				elif (p == "## initial state\n"):
+					init = [int(i) for i in l.split()]
+					break
+				p = l
+		print("Read parsed instance file.")
 
 		# Problem parameters
 		self.num_state_vars = num_det + num_prob  # number of state variables
@@ -75,15 +81,24 @@ class RDDLEnv(Env):
 		# Set up RDDL Simulator clibxx.so
 		qwwe = str(self.instance).split(".|_")
 		
-		path = tempfile.NamedTemporaryFile().name
-		shutil.copy2(os.path.abspath(os.path.join(os.path.dirname(__file__),'../../../rddl/lib/clibxx.so')), path)
-		self.rddlsim = ctypes.CDLL(path)
+		lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../../../rddl/lib/clibxx.so'))
+		if not os.path.isfile(lib_path):
+			print("Lib file not found: " + lib_path)
+			sys.exit(-1)
+		lib_copy_path = tempfile.NamedTemporaryFile().name
+		shutil.copy2(lib_path, lib_copy_path)
+		if not os.path.isfile(lib_copy_path):
+			print("Failed to copy lib file to: " + lib_copy_path)
+			sys.exit(-1)
+		print("Copied rddlsim library: " + lib_path)
+
+		self.rddlsim = ctypes.CDLL(lib_copy_path)
+		print("Loaded rddlsim library.")
 
 		# self.rddlsim = ctypes.CDLL(os.path.abspath(os.path.join(os.path.dirname(__file__),'./rddl/lib/clibxx{}.so'.format(qwwe[0]))))
 		self.rddlsim.step.restype = ctypes.c_double
 
 		# Better without the explicit encoding
-		parsed_file_name = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../rddl/parsed/', self.problem))
 		parsed_file_name_byteobject = parsed_file_name.encode()
 		parsed_file_name_ctype = ctypes.create_string_buffer(parsed_file_name_byteobject, len(parsed_file_name_byteobject))
 
@@ -97,6 +112,8 @@ class RDDLEnv(Env):
 			sys.stdout = _origstdout
 			sys.stdout.flush()
 			os.dup2(_oldstdout_fno, 1)
+
+		print("Created env: " + instance)
 		
 	# Do not understand this yet. Almost all other sample environments have it, so we have it too.
 	def _seed(self, seed=None):
