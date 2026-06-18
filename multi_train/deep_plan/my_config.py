@@ -21,15 +21,13 @@ num_testing_episodes = 30 # Testing episodes when model has been trained
 
 #train_instance = "" # These two flags are set automatically when you run train.py
 #test_instance = ""
-train_instance = ",".join([str(1+i) for i in range(3)])
-test_instance = ",".join(str(1+i) for i in range(10))
 
 trajectory_dataset_folder = "../../data/datasets/"
 max_transitions_per_instance = 300
 last_in_dataset = False # Setting to true might lead to better results since PROST learns while executing
 
 batch_size = 32
-train_epochs = 10
+train_epochs = 501
 ckpt_freq = 10
 keep_ckpts = False
 lr = 0.001

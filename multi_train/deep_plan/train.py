@@ -29,6 +29,9 @@ from model_factory import ModelFactory
 from supervised_dataset import SupervisedDataset
 
 load_saved_dataset = False
+
+# Performs one network update from the given batch (x, y). 
+# Returns two values the policy loss and the aux loss (None if not enabled).
 # @tf.function
 def train_step(network, x, y, instance, env_instance_wrapper, loss_fn, optimizer, grad_clip_value, step, multiplier=0.0):
     if my_config.add_aux_loss:
@@ -61,8 +64,10 @@ def train_step(network, x, y, instance, env_instance_wrapper, loss_fn, optimizer
         grads_of_policynet = tf.clip_by_global_norm(grads_of_policynet, grad_clip_value)
 
         optimizer.apply_gradients(zip(grads_of_policynet[0], network.trainable_variables))
-        return policynet_loss
+        return policynet_loss, None
 
+# Trains for the given number of epochs.
+# Each epoch uses the entire dataset of each instance to perform updates.
 def train(MODEL_DIR, CHECKPOINT_DIR):
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
@@ -127,7 +132,7 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
     # SUPERVISED TRAINING STARTS
     # Training dataset
     dataset_folder = my_config.trajectory_dataset_folder
-    batch_size = my_config.batch_size
+    batch_size = my_config.batch_size # fixed at 32
     dataset_ob = SupervisedDataset(train_instances, env_instance_wrapper, dataset_folder, batch_size, num_episodes=None)
     print("Loading datasets.")
 
@@ -142,9 +147,12 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
         start_time = time.time()
         random.shuffle(dataset_ob.instance_order)
         for ins in dataset_ob.instance_order:
+            # Get samples from the current instance's dataset
             instance, states, actions = dataset_ob.dataset[ins]
             total_size = len(states)
-            cur_loc= 0
+            cur_loc = 0
+
+            # Uses all samples to train
             while cur_loc < total_size:
                 if cur_loc + batch_size < total_size:
                     x = states[cur_loc: cur_loc + batch_size]
@@ -155,21 +163,20 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
                     y = actions[cur_loc:]
                     cur_loc = total_size+1
 
+                multiplier = 0
                 if my_config.add_aux_loss:
                     if my_config.decay_aux_loss:
                         if step < 2000:
                             multiplier = 0.1
                         elif 2000 <= step < 3000:
                             multiplier = 0.1 * (3000 - step) / 1000
-                        else:
-                            multiplier = 0
                     else:
                         multiplier = 0.1
                     
-                    loss_value, aux_value = train_step(network, x, y, instance, env_instance_wrapper, loss_fn, model_factory.policynet_optim, grad_clip_value, step, multiplier=multiplier)
-                else:
-                    loss_value = train_step(network, x, y, instance, env_instance_wrapper, loss_fn, model_factory.policynet_optim, grad_clip_value, step)
+                # Each batch_size samples, do an update
+                loss_value, aux_value = train_step(network, x, y, instance, env_instance_wrapper, loss_fn, model_factory.policynet_optim, grad_clip_value, step, multiplier=multiplier)
                 step += 1
+
             if my_config.add_aux_loss:
                 print("Instance %d \t| Total steps: %d | Imitation loss: %.4f | KL loss: %.4f | KL multiplier: %.4f" % (ins, step-1, float(loss_value), float(aux_value), multiplier))
             else:
@@ -199,6 +206,7 @@ if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None
     helper.load_config(config_file)
     
+    #For each domain, we generate 1000 training, 100 validation, and 200 test instances with size increasing from train to val to test instances.
     if my_config.setting == "ippc":
         my_config.train_instance = ",".join(str(900+i) for i in range(20))   
         my_config.test_instance = ",".join(str(1100+i) for i in range(10))
@@ -213,23 +221,23 @@ if __name__ == '__main__':
             my_config.test_instance = ",".join(str(1100+i) for i in range(10))
     
     elif my_config.setting == "lr":
-        if my_config.domain == 'recon':
+        if my_config.domain == 'recon': # SRecon
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2177])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'academic_advising_prob':
+        if my_config.domain == 'academic_advising_prob': # EAcad
             # These instances were rejected because their score is worse than a no-op policy
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2100,2119,2126,2130,2143,2150,2183,2185,2189,2194,2203,2205,2242,2258,2283,2290,2296,2329,2336,2344,2351,2417,2432,2472,2482,2488,2505,2508,2523,2530,2540,2569,2586,2589,2597,2605,2613,2623,2640,2686,2730,2747,2778,2780,2869,2889,2961,2994,2998,3023,3042,3081,3095])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'pizza_delivery_windy':
+        if my_config.domain == 'pizza_delivery_windy': # Pizza
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2692])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))        
-        if my_config.domain == 'navigation':
+        if my_config.domain == 'navigation': # DNav
             my_config.train_instance = ",".join([str(1100+i) for i in range(1000) if 1100+i not in [1333,1965,1966,1967,1968,1969,1970,1971,1972,1973,1974,1975,1976,1977,1978,1979]])
             my_config.test_instance = ",".join([str(2100+i) for i in range(100)])
-        if my_config.domain == 'stochastic_wall':
+        if my_config.domain == 'stochastic_wall': #StWall
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2806,2835,2837,3069,3080])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'corridor':
+        if my_config.domain == 'corridor': # StNav
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2211])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
 

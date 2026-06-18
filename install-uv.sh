@@ -31,9 +31,9 @@ if [[ ! -d "$ENVNAME" ]]; then
     uv venv $ENVNAME --python 3.10
     echo "Virtual environment $ENVNAME created."
     nvidia_lib=$PWD/$ENVNAME/lib/python3.10/site-packages/nvidia
-    echo "export LD_LIBRARY_PATH=$nvidia_lib/cuda_runtime/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
-    echo "export LD_LIBRARY_PATH=$nvidia_lib/cublas/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
-    echo "export LD_LIBRARY_PATH=$nvidia_lib/cudnn/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+    echo "export LD_LIBRARY_PATH=${nvidia_lib}/cuda_runtime/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+    echo "export LD_LIBRARY_PATH=${nvidia_lib}/cublas/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
+    echo "export LD_LIBRARY_PATH=${nvidia_lib}/cudnn/lib:\${LD_LIBRARY_PATH}" >> $ENVNAME/bin/activate
 fi
 source $ENVNAME/bin/activate
 echo "Virtual environment $ENVNAME activated."

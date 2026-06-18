@@ -3,7 +3,7 @@
 
 set -e
 
-declare -a new_domains=("academic_advising_chain" "academic_advising_prob" "pizza_delivery" "pizza_delivery_grid" "pizza_delivery_windy" "wall" "stochastic_navigation" "stochastic_wall" "corridor")
+declare -a lr_domains=("academic_advising_chain" "academic_advising_prob" "pizza_delivery" "pizza_delivery_grid" "pizza_delivery_windy" "wall" "stochastic_navigation" "stochastic_wall" "corridor")
 declare -a domains=("academic_advising" "crossing_traffic" "game_of_life" "navigation" "skill_teaching" "sysadmin" "tamarisk" "traffic" "wildfire" "recon" "triangle_tireworld" "elevators")
 declare -a instances=($(seq 1 10))
 
