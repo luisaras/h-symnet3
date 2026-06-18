@@ -28,4 +28,4 @@ RUN uv pip install --system -r requirements.txt && \
 ENV NVIDIA_LIBS=/usr/local/lib/python3.10/site-packages/nvidia
 ENV LD_LIBRARY_PATH=${NVIDIA_LIBS}/cuda_runtime/lib:${NVIDIA_LIBS}/cublas/lib:${NVIDIA_LIBS}/cudnn/lib:${LD_LIBRARY_PATH}
 
-ENTRYPOINT ["uv", "run"]
+ENTRYPOINT ["uv"]

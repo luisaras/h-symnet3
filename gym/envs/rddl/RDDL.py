@@ -8,6 +8,10 @@ import numpy as np
 import gym
 import tempfile
 import shutil
+from pyRDDLGym.core.compiler.model import RDDLLiftedModel
+from pyRDDLGym.core.parser.parser import RDDLParser
+from pyRDDLGym.core.parser.preprocessor import RDDLPreprocessor
+from pyRDDLGym.core.parser.reader import RDDLReader
 
 from gym import Env
 from gym.utils import seeding
@@ -19,6 +23,7 @@ if parser_path not in sys.path:
 	sys.path = [parser_path] + sys.path
 
 from parse_instance import InstanceParser
+from determinizer import Determinizer
 
 
 redirect = True
@@ -35,14 +40,26 @@ class RDDLEnv(Env):
 		self.domain = domain + '_mdp'
 		self.problem = domain + '_inst_mdp__' + instance
 		self.instance = instance
+		rddl_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','..','rddl'))
 
+		# Instance Graph
 		self.instance_parser = InstanceParser(self.domain[:-4], self.instance)
+
+		# Original RDDL model
+		domain_file = os.path.join(rddl_directory, 'domains', self.domain + ".rddl")
+		instance_file = os.path.join(rddl_directory, 'domains', self.problem + ".rddl")
+        reader = RDDLReader(domain_file, instance_file)
+        parser = RDDLParser(lexer=None, verbose=False)
+        parser.build()
+        rddl = parser.parse(reader.rddltxt)
+        self.model = RDDLLiftedModel(rddl)
+        self.task = Determinizer(self.model).to_task()
 
 		# Seed Random number generator
 		self._seed()
 
 		# f = open(os.path.abspath(os.path.join(os.path.dirname(__file__), './rddl/parsed/',self.problem)))
-		parsed_file_name = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../rddl/parsed/', self.problem))
+		parsed_file_name = os.path.join(rddl_directory, 'parsed', self.problem)
 		if not os.path.isfile(parsed_file_name):
 			print("File not found: " + parsed_file_name)
 			sys.exit(-1)
