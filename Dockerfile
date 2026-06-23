@@ -10,6 +10,10 @@ RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
 RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --allow-unauthenticated \
     libbdd-dev \
+    python3-numpy python3-dev python3-pip python3-wheel python3-venv \
+    flex bison build-essential autoconf libtool git \
+    libboost-all-dev cmake \
+    graphviz \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv inside the image for package management

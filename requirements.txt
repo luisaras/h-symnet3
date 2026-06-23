@@ -25,3 +25,7 @@ mock==5.1.0
 setuptools==68.2.2
 pygame==2.5.0
 pyrddlgym #==2.7
+
+# Planning
+ssipp @ git+https://gitlab.com/qxcv/ssipp.git@49e922b4cbdf6d7278a34446ae6fc1732efb6fec
+mdpsim @ git+https://gitlab.cecs.anu.edu.au/u5568237/mdpsim.git@0881a3e86b15582b2e632904193c12d310bedda3

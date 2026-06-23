@@ -8,23 +8,11 @@ import numpy as np
 import gym
 import tempfile
 import shutil
-from pyRDDLGym.core.compiler.model import RDDLLiftedModel
-from pyRDDLGym.core.parser.parser import RDDLParser
-from pyRDDLGym.core.parser.preprocessor import RDDLPreprocessor
-from pyRDDLGym.core.parser.reader import RDDLReader
 
 from gym import Env
 from gym.utils import seeding
 
-# For instance parser
-curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-parser_path = os.path.abspath(os.path.join(curr_dir_path, "../../../utils"))
-if parser_path not in sys.path:
-	sys.path = [parser_path] + sys.path
-
-from parse_instance import InstanceParser
-from determinizer import Determinizer
-
+from instance_parser import InstanceParser
 
 redirect = True
 def redirect_stdout():
@@ -39,32 +27,15 @@ class RDDLEnv(Env):
 	def __init__(self, domain, instance):
 		self.domain = domain + '_mdp'
 		self.problem = domain + '_inst_mdp__' + instance
-		self.instance = instance
-		rddl_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','..','rddl'))
 
 		# Instance Graph
-		self.instance_parser = InstanceParser(self.domain[:-4], self.instance)
-
-		# Original RDDL model
-		domain_file = os.path.join(rddl_directory, 'domains', self.domain + ".rddl")
-		instance_file = os.path.join(rddl_directory, 'domains', self.problem + ".rddl")
-        reader = RDDLReader(domain_file, instance_file)
-        parser = RDDLParser(lexer=None, verbose=False)
-        parser.build()
-        rddl = parser.parse(reader.rddltxt)
-        self.model = RDDLLiftedModel(rddl)
-        self.task = Determinizer(self.model).to_task()
+		self.instance_parser = InstanceParser(domain, instance)
 
 		# Seed Random number generator
 		self._seed()
 
-		# f = open(os.path.abspath(os.path.join(os.path.dirname(__file__), './rddl/parsed/',self.problem)))
-		parsed_file_name = os.path.join(rddl_directory, 'parsed', self.problem)
-		if not os.path.isfile(parsed_file_name):
-			print("File not found: " + parsed_file_name)
-			sys.exit(-1)
-
-		with open(parsed_file_name, "r") as f:
+		# The file needed for 
+		with open(self.instance_parser.parsed_file_name, "r") as f:
 			p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
 			for l in f:
 				if (p == "## horizon\n"):
@@ -94,11 +65,8 @@ class RDDLEnv(Env):
 		self.horizon = h  # episode horizon
 		self.tstep = 1  # current time step
 		self.done = False  # end_of_episode flag
-
-		# Set up RDDL Simulator clibxx.so
-		qwwe = str(self.instance).split(".|_")
 		
-		lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__),'../../../rddl/lib/clibxx.so'))
+		lib_path = os.path.join(curr_dir_path, "clibxx.so")
 		if not os.path.isfile(lib_path):
 			print("Lib file not found: " + lib_path)
 			sys.exit(-1)
@@ -112,11 +80,10 @@ class RDDLEnv(Env):
 		self.rddlsim = ctypes.CDLL(lib_copy_path)
 		print("Loaded rddlsim library.")
 
-		# self.rddlsim = ctypes.CDLL(os.path.abspath(os.path.join(os.path.dirname(__file__),'./rddl/lib/clibxx{}.so'.format(qwwe[0]))))
 		self.rddlsim.step.restype = ctypes.c_double
 
 		# Better without the explicit encoding
-		parsed_file_name_byteobject = parsed_file_name.encode()
+		parsed_file_name_byteobject = self.instance_parser.parsed_file_name.encode()
 		parsed_file_name_ctype = ctypes.create_string_buffer(parsed_file_name_byteobject, len(parsed_file_name_byteobject))
 
 		if redirect:

@@ -4,27 +4,18 @@
 set -e
 
 declare -a lr_domains=("academic_advising_chain" "academic_advising_prob" "pizza_delivery" "pizza_delivery_grid" "pizza_delivery_windy" "wall" "stochastic_navigation" "stochastic_wall" "corridor")
-declare -a domains=("academic_advising" "crossing_traffic" "game_of_life" "navigation" "skill_teaching" "sysadmin" "tamarisk" "traffic" "wildfire" "recon" "triangle_tireworld" "elevators")
+declare -a domains_extra=("recon" "triangle_tireworld" "elevators")
+declare -a domains=("academic_advising" "crossing_traffic" "game_of_life" "navigation" "skill_teaching" "sysadmin" "tamarisk" "traffic" "wildfire")
 declare -a instances=($(seq 1 10))
 
-if [ ! -d "rddl" ]; then
-	mkdir rddl
-	mkdir rddl/lib
-	mkdir rddl/dbn
-	mkdir rddl/parsed
-	cp $PROST_ROOT/builds/release/rddl_parser/rddl-parser rddl/lib
-	mkdir rddl/domains
-	cp $PROST_ROOT/testbed/benchmarks/*/*.rddl rddl/domains
-	pushd utils
-	for d in "${domains[@]}"
+for d in "${domains[@]}"
+do
+	for i in "${instances[@]}"
 	do
-		for i in "${instances[@]}"
-		do
-	    	./new_instance.sh "rddl/domains/${d}_mdp.rddl" "rddl/domains/${d}_inst_mdp__${i}.rddl" "${d}_inst_mdp__${i}" $i
-	    done
-	done
-	popd
-fi
+    	./prepare_instance.sh ${d} $i
+    done
+done
+
 
 if [ ! -d "data" ]; then
 	mkdir data

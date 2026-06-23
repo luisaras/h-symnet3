@@ -6,20 +6,29 @@ import sys
 import functools
 from functools import partial
 from copy import deepcopy
-sys.path.append("../multi_train/deep_plan/")
-import my_config
 from tabulate import tabulate
 import json
+
+my_config = None
+benchmark_folder = ""
+
+def setup(config):
+    global my_config
+    my_config = config
+    global benchmark_folder
+    benchmark_folder = os.path.abspath(my_config.benchmark_folder, domain)
 
 class InstanceParser(object):
     def __init__(self, domain, instance):
         self.domain = domain
         self.instance = instance
-        curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-        self.domain_file = os.path.abspath(os.path.join(curr_dir_path,"../rddl/domains/{}_mdp.rddl".format(self.domain)))
-        self.instance_file = os.path.abspath(os.path.join(curr_dir_path, "../rddl/domains/{}_inst_mdp__{}.rddl".format(self.domain, self.instance.replace('.', '_'))))
-        self.parsed_instance_file = os.path.abspath(os.path.join(curr_dir_path, "../rddl/parsed/{}_inst_mdp__{}".format(self.domain, self.instance.replace('.', '_'))))
-        self.dot_file = os.path.abspath(os.path.join(curr_dir_path, "../rddl/dbn/{}_inst_mdp__{}.dot".format(self.domain, self.instance.replace('.', '_'))))
+
+        self.domain_folder = os.path.join(benchmark_folder, domain)
+        self.domain_file = os.path.join(self.domain_folder, "rddl", domain + "_mdp.rddl")
+        self.instance_file = os.path.join(self.domain_folder, "rddl", domain + "_inst_mdp__" + instance + ".rddl")
+        self.parsed_instance_file = os.path.join(self.domain_folder, "parsed", domain + "_inst_mdp__" + instance)
+        self.dot_file = os.path.join(self.domain_folder, "dbn", domain + "_inst_mdp__" + instance + ".dot")
+
         # Read domain description
         try:
             with open(self.domain_file) as f:
@@ -717,7 +726,7 @@ class InstanceParser(object):
                             # Adding unparameterised state fluents
                             self.unpara_fluents.add(state_var_ob)
                             continue
-        
+
         if my_config.split_dbn:
             dbn_edge_types = []
             for conn in self.para_state_connections:
@@ -741,10 +750,11 @@ class InstanceParser(object):
                 end_type = tuple([self.object_name_to_type[x] for x in end.split(",")])
                 offset = self.dbn_edge_types_to_idx[(start_type, end_type)]
                 self.adjacency_lists[original_num_adj+offset][self.node_dict[start]].append(self.node_dict[end])
-                
-            
 
-        self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents)
+        if my_config.heuristics:
+            self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents) + len(my_config.heuristics)
+        else:
+            self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents)
 
         for i in range(1, len(self.action_template_to_num.keys()) + 1):
             self.extended_adjacency_lists[i] = {k: [] for k in range(len(self.object_names))}
@@ -784,6 +794,11 @@ class InstanceParser(object):
         if len(self.unpara_fluents) != 0:
             for (i, st) in enumerate(sorted(self.unpara_fluents)):
                 f_features[:, -i - 1] = state[self.state_to_num[st]]
+        if self.planner_exts:
+            heuristic_features = self.planner_exts.compute_heuristics(state, self)
+            n = len(self.unpara_fluents)
+            for (i, hf) in enumerate(heuristic_features):
+                f_features[:, -(i+n) - 1] = hf
 
         for st in self.para_state_names:  # For each fluent
             for node in self.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)

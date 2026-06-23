@@ -7,10 +7,12 @@ import symnet3_config
 from datetime import datetime
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-gym_path = os.path.abspath(os.path.join(curr_dir_path, "../.."))
-if gym_path not in sys.path:
-	sys.path = [gym_path] + sys.path
+root_path = os.path.abspath(os.path.join(curr_dir_path, "..", ".."))
+if root_path not in sys.path:
+	sys.path = [root_path] + sys.path
 import gym
+
+from ssipp_interface import PlannerExtensions
 
 def load_config(file=None):
 	if file:
@@ -54,10 +56,15 @@ def get_instance_names():
 	return train_instances,len(train_instances),test_instances,len(test_instances),instances
 
 def make_envs(instances):
+	gym.envs.rddl.instance_parser.setup(my_config)
 	envs = []
 	for instance in instances:
 		env_name = "RDDL-{}{}-v1".format(my_config.domain, instance)
 		env = gym.make(env_name)
+		if my_config.heuristics:
+			domain_folder = env.instance_parser.domain_folder
+			ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
+			env.instance_parser.planner_exts = PlannerExtensions(ppddl_file, env.problem, my_config.heuristics)
 		envs.append(env)
 	return envs
 

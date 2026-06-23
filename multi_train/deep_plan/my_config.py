@@ -12,9 +12,10 @@ academic_advising_prob(EAcad), navigation(DNav), corridor(StNav), recon(SRecon),
 '''
 
 setting = "custom" # Set to ippc to run on ippc domains and lr to run on lr domains
-exp_description = "standard" # suffix for model folder
 domain = "sysadmin" # Domain to be tested on
+benchmark_folder = "../../benchmarks/"
 model_dir =  "models/" # Path to model
+exp_description = "standard" # suffix for model folder
 
 num_validation_episodes = 5 # Validation episodes for each epoch
 num_testing_episodes = 30 # Testing episodes when model has been trained
@@ -47,3 +48,4 @@ num_threads = 4 # Number of threads to parallelize inference
 mode = "no_dist"
 
 net_config=None # custom symnet3_config.py
+heuristics=[]

@@ -1,5 +1,7 @@
 data/
-rddl/
+benchmarks/*/dbn
+benchmarks/*/parsed
+benchmarks/*/ppddl
 symnet3_data.zip
 multi_train/deep_plan/models
 temp_config.py

@@ -22,12 +22,12 @@ def parse_arguments():
     return args
 
 class Generator():
-    def __init__(self):
+    def __init__(self, rddlsim_folder):
         self.script_args = config.script_args
         self.script_name = config.script_name
         
         self.folder = os.path.dirname(os.path.realpath(__file__))
-        self.rddlsim_folder = self.folder + '/../../rddlsim/bin/'
+        self.rddlsim_folder = rddlsim_folder
         self.cp = '.commons-math3-3.6.1.jar'
         self.seed = None
 
@@ -72,12 +72,12 @@ class Generator():
         return args
 
     def generate_instance(self, domain, dataset, name, verbose=False):
-        output_dir = os.path.abspath(self.folder + "/../rddl/domains/")
+        output_dir = os.path.abspath(os.path.join(self.folder, "..", "benchmarks", domain, "rddl"))
         script_name = self.script_name[domain]
         instance_name = f'{domain}_inst_mdp__{name}'
         if ".py" in script_name:
             command = ['python3', script_name]
-            directory = os.path.abspath(self.folder + "/domains/")
+            directory = os.path.abspath(os.path.join(self.folder, "domains"))
         else:
             command = ['java', '-cp', self.cp, script_name]
             directory = os.path.abspath(self.rddlsim_folder)
@@ -102,8 +102,17 @@ class Generator():
             print(e.stderr)
 
 if __name__ == '__main__':
+    try:
+        rddlsim_root = os.environ["RDDLSIM_ROOT"]
+    except KeyError:
+        err_msg = (
+            "Error: an environment variable RDDLSIM_ROOT pointing to "
+            "your PROST installation must be setup."
+        )
+        print(err_msg)
+        sys.exit()
     args = parse_arguments()
-    generator = Generator()
+    generator = Generator(rddlsim_root, )
     if args.seed and args.seed >= 0:
         generator.set_seed(args.seed)
     for i in range(args.instance, args.instance+args.n_instances):
