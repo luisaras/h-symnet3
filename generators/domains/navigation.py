@@ -28,7 +28,7 @@ def generate_instance(instance_name, w, h, t, horizon):
 	elif t == "default":
 		safe_cols = range(1, w+1)
 		danger_chance = lambda i : (0.01 + ((0.9*(i-1))/(w - 1))) + 0.05*random.uniform(0,1)
-		safe_chance = danger
+		safe_chance = danger_chance
 	else:
 		danger_chance = lambda i : random.uniform(0.88, 0.92)
 		safe_chance = lambda i : random.uniform(0.045, 0.055)
@@ -92,5 +92,7 @@ if __name__ == "__main__":
 	h = int(args[4])
 	content = generate_instance(instance_name, x, y, t, h)
 	os.makedirs(out_dir, exist_ok=True)
-	with open(os.path.join(out_dir, instance_name + ".rddl"), "w") as f:
+	file = os.path.join(out_dir, instance_name + ".rddl")
+	with open(file, "w") as f:
 		f.write(content)
+	print("Generated file: " + file)

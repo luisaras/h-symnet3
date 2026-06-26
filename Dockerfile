@@ -14,6 +14,7 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     flex bison build-essential autoconf libtool git \
     libboost-all-dev cmake \
     graphviz \
+    parallel \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv inside the image for package management

@@ -2,32 +2,25 @@ import sys, subprocess, os, signal, atexit, time
 
 class RDDLServer:
 
-	def __init__(self, prost_root="../../prost", domain_folder="", domain_root=None, episodes=30):
+	def __init__(self, prost_root="../../prost", benchmark="", episodes=30, port_shift=0):
 		self.prost_root = prost_root
-		self.domain_folder = domain_folder
-		self.domain_root = domain_root
+		self.benchmark = benchmark
 		self.episodes = episodes
 		self.proc = None
+		self.port = str(2323 + port_shift)
 		self.register_global_cleanup()
 
 	def start(self):
-		root = self.prost_root + "/testbed"
-		cmd = ["python3", root + "/run-server.py",
-			"-r", str(self.episodes)]
-		if self.domain_root:
-			# Custom domain folder
-			cmd.append("-b")
-			folder = self.domain_root
-			if self.domain_folder:
-				folder += "/" + self.domain_folder
-			cmd.append(folder)
-		elif self.domain_folder:
-			# Default benchmark folder
-			cmd.append("-b")
-			cmd.append(f"{root}/benchmarks/{self.domain_folder}")
-		else:
+		testbed = os.path.join(self.prost_root, "testbed")
+		cmd = ["python3", os.path.join(testbed, "run-server.py"),
+			"-r", str(self.episodes),
+			"-p", self.port]
+		if not self.benchmark:
 			# Default benchmark folder (all domains)
 			cmd.append("--all-ipc-benchmarks")
+		else:
+			cmd.append("-b")
+			cmd.append(self.benchmark)
 		print(cmd)
 		try:
 			self.proc = subprocess.Popen(cmd, 
@@ -38,7 +31,7 @@ class RDDLServer:
 			# Waiting until it's running
 			for line in self.proc.stdout:
 				if "RDDL Server Initialized" in line:
-					print("RDDLSym Server Running ")
+					print("RDDLSim Server Running on port " + self.port)
 					return True
 				print(line)
 		except subprocess.CalledProcessError as e:
@@ -52,6 +45,7 @@ class RDDLServer:
 			try:
 				# Kill the whole process group (important!)
 				os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
+				print("Closed RDDLSim Server on port " + self.port)
 			except Exception:
 				pass
 

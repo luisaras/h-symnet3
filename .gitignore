@@ -1,11 +1,17 @@
+# Parsed domains and PROST data (re-generate using prepare.sh)
 data/
 benchmarks/*/dbn
 benchmarks/*/parsed
 benchmarks/*/ppddl
+benchmarks/*/rddl/*_inst_mdp__*.rddl
 symnet3_data.zip
 multi_train/deep_plan/models
 temp_config.py
 /.keras/
+.myscript.exclusivelock
+.combined
+temp_*/
+temp_config.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

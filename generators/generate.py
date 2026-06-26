@@ -14,10 +14,11 @@ def parse_arguments():
     )
     parser.add_argument("domain", help="domain name")
     parser.add_argument("instance", type=int, help="number of first instance")
-    parser.add_argument("n_instances", type=int, default=1, help="number of instances to generate")
+    parser.add_argument("-n", "--num_instances", type=int, default=1, help="number of instances to generate")
     parser.add_argument("-d", "--dataset", default="train", help="train, test, val or something custom")
     parser.add_argument("-s", "--seed", type=int, default=None, help='random seed; if -1, set seed to the instance number')
     parser.add_argument("-v", "--verbose", help="log errors", action="store_true")
+    parser.add_argument("--skip", help="skip existent files", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -38,8 +39,8 @@ class Generator():
     def print_args(self, domain, dataset, args):
         arg_str = []
         for i, arg_type in enumerate(self.script_args[domain + "-" + dataset]):
-            arg_str.append(f'{arg_type["param_name"]} : {args[i]}')
-        print(f"Generating RDDL with arguments-{','.join(arg_str)}")
+            arg_str.append(f'{arg_type["param_name"]}: {args[i]}')
+        print(f"Generating RDDL with arguments [{','.join(arg_str)}]")
         
 
     def validate_args(self, domain, args):
@@ -71,10 +72,10 @@ class Generator():
                 args.append(arg_types['value'])
         return args
 
-    def generate_instance(self, domain, dataset, name, verbose=False):
-        output_dir = os.path.abspath(os.path.join(self.folder, "..", "benchmarks", domain, "rddl"))
+    def generate_instance(self, domain, dataset, instance, verbose=False):
+        output_dir = self.get_output_dir(domain)
         script_name = self.script_name[domain]
-        instance_name = f'{domain}_inst_mdp__{name}'
+        instance_name = f'{domain}_inst_mdp__{instance}'
         if ".py" in script_name:
             command = ['python3', script_name]
             directory = os.path.abspath(os.path.join(self.folder, "domains"))
@@ -96,10 +97,24 @@ class Generator():
         
         try:
             process = subprocess.run(command + args, cwd=directory, stdout=out, stderr=err)
-            #print(process.stdout)
+            print(process.stdout)
         except subprocess.CalledProcessError as e:
             print(f"Command failed with exit code {e.returncode}")
             print(e.stderr)
+
+    def get_output_dir(self, domain):
+        return os.path.abspath(os.path.join(self.folder, "..", "benchmarks", domain, "rddl"))
+
+    def check_instance_file(self, domain, instance):
+        output_dir = self.get_output_dir(domain)
+        instance_name = f'{domain}_inst_mdp__{instance}'
+        file = os.path.join(output_dir, instance_name + ".rddl")
+        print(file)
+        if os.path.exists(file):
+            print("Instance already generated: " + instance_name)
+            return True
+        return False
+
 
 if __name__ == '__main__':
     try:
@@ -107,15 +122,18 @@ if __name__ == '__main__':
     except KeyError:
         err_msg = (
             "Error: an environment variable RDDLSIM_ROOT pointing to "
-            "your PROST installation must be setup."
+            "your RDDLSIM_ROOT installation must be setup."
         )
         print(err_msg)
         sys.exit()
     args = parse_arguments()
-    generator = Generator(rddlsim_root, )
+    generator = Generator(rddlsim_root)
     if args.seed and args.seed >= 0:
         generator.set_seed(args.seed)
-    for i in range(args.instance, args.instance+args.n_instances):
+    for i in range(args.instance, args.instance+args.num_instances):
         if args.seed == -1:
             generator.set_seed(i)
-        generator.generate_instance(args.domain, args.dataset, str(i), args.verbose)
+        instance = str(i)
+        if args.skip and generator.check_instance_file(args.domain, instance):
+            continue
+        generator.generate_instance(args.domain, args.dataset, instance, args.verbose)

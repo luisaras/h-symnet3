@@ -1,5 +1,5 @@
 #!/bin/python3
-import sys, subprocess, os, argparse
+import sys, subprocess, os, argparse, shutil
 from rddl_server import RDDLServer
 
 def parse_arguments():
@@ -11,80 +11,71 @@ def parse_arguments():
 		"by environment variable PROST_ROOT.",
 		formatter_class=formatter,
 	)
-	parser.add_argument("domain", help="Domain name.")
-	parser.add_argument("instance", help="Instance name.")
-	parser.add_argument("-r", "--rounds", help="Number of episodes/rounds.",
-		action="store",
-		default=30,
-		type=int
-	)
-	parser.add_argument("-d", "--directory", help="Directory with rddl files.",
+	parser.add_argument("domain", help="domain name")
+	parser.add_argument("instance", help="name or number of first instance")
+	parser.add_argument("-n", "--num_instances", help="number of instances (if batch)",
+		type=int,
 		default=None)
+	parser.add_argument("-r", "--rounds", help="number of episodes/rounds",
+		action="store",
+		type=int,
+		default=30)
+	parser.add_argument("-d", "--directory", help="directory with rddl files",
+		default=None)
+	parser.add_argument("-l", "--log", help="log output file or directory (if batch).",
+		default=None)
+	parser.add_argument("-p", "--port", help="RDDL sim port",
+		type=int,
+		default=0)
 	args = parser.parse_args()
 	return args
 
 
 class PROST:
 
-	def __init__(self, rddl_server, prost_root="../../prost"):
+	def __init__(self, prost_root="../../prost", port_shift=0, cwd='.'):
 		self.root = prost_root
-		self.rddl_server = rddl_server
+		self.port = str(2323 + port_shift)
+		self.cwd = cwd
 
-	def run(self, instance):
-		with self.rddl_server:
-			# Run PROST here
-			#inst = f"{args.domain}_inst_mdp__{args.instance}"
-			cmd = ["python3", self.root + "/prost.py", instance, "[Prost -s 1 -se [IPC2014]]"]
-			print(cmd)
-			try:
-				process = subprocess.Popen(cmd,
-					stdout=subprocess.PIPE,    # Capture stdout
-					#stderr=subprocess.STDOUT,  # Redirect stderr into stdout so everything is in one place
-					text=True,                 # Decode bytes to a string
-					#check=True                 # Raise error on crash
-				)
-				output = ""
-				for line in process.stdout:
-					print(line, end="")        # Show on screen instantly
-					output += "\n" + line  # Save to list
-				process.wait()
-				return self.get_results(output)
-			except subprocess.CalledProcessError as e:
-				print(f"Command failed with exit code {e.returncode}")
-				print(e.stdout)
-				return None
+	def run(self, instance_name, log_file=None):
+		cmd = ["python3", self.root + "/prost.py", instance_name, "-p", self.port, "[Prost -s 1 -se [IPC2014]]"]
+		print(cmd)
+		try:
+			process = subprocess.Popen(cmd,
+				stdout=subprocess.PIPE,    # Capture stdout
+				#stderr=subprocess.STDOUT,  # Redirect stderr into stdout so everything is in one place
+				text=True,                 # Decode bytes to a string
+				#check=True                 # Raise error on crash
+				cwd=self.cwd,
+			)
+			output = ""
+			for line in process.stdout:
+				print(line, end="")    # Show on screen instantly
+				output += line  # Save to list
+			process.wait()
+			if log_file:
+				with open(log_file, 'w') as f:
+					f.write(output)
+			return self.get_results(output)
+		except subprocess.CalledProcessError as e:
+			print(f"Command failed with exit code {e.returncode}")
+			print(e.stdout)
+			return None
 
-	def run_batch(self, domain_name, instances, save_output=True):
-		with self.rddl_server:
-			rewards = []
-			times = []
-			for i in instances: #range(1, 10)
-				instance = f"{domain_name}_inst_mdp__{i}"
-				cmd = ["python3", self.root + "/prost.py", instance, "[Prost -s 1 -se [IPC2014]]"]
-				print(cmd)
-				try:
-					process = subprocess.Popen(cmd,
-						stdout=subprocess.PIPE,    # Capture stdout
-						#stderr=subprocess.STDOUT,  # Redirect stderr into stdout so everything is in one place
-						text=True,                 # Decode bytes to a string
-						#check=True                 # Raise error on crash
-					)
-					output = ""
-					for line in process.stdout:
-						print(line, end="")        # Show on screen instantly
-						output += "\n" + line  # Save to list
-					process.wait()
-				except subprocess.CalledProcessError as e:
-					print(f"Command failed with exit code {e.returncode}")
-					print(e.stdout)
-					return
-				if save_output:
-					with open(f'{i}.result', 'w') as f:
-						f.write(output)
-				reward, time = self.get_results(output)
-				rewards.append(result)
-				times.append(time)
-			return rewards, times
+	def run_batch(self, domain_name, instances, log_folder=None):
+		rewards = {}
+		times = {}
+		for i in instances:
+			if log_folder:
+				log_file = f'{log_folder}/{i}.result'
+			else:
+				log_file = None
+			instance = f"{domain_name}_inst_mdp__{i}"
+			reward, time = self.run(instance, log_file)
+			rewards[i] = reward
+			times[i] = time
+		return rewards, times
 
 	def get_results(self, output):
 		result = output[-500:-1].splitlines()
@@ -113,6 +104,36 @@ if __name__ == "__main__":
 		sys.exit()
 
 	args = parse_arguments()
-	server = RDDLServer(prost_root, "" if args.directory else args.domain, args.directory, args.rounds)
-	prost = PROST(server, prost_root)
-	print(prost.run(args.instance))
+
+	if args.directory:
+		# Custom rddl folder
+		domain_folder = args.directory
+	if not domain_folder:
+		# {domain} folder within prost testbed benchmark
+		domain_folder = os.path.join(prost_root, "testbed", "bechmarks", args.domain)
+
+	cwd = None
+	if args.num_instances == 1:
+		# Single instance: create temp folder
+		instance = f'{args.domain}_inst_mdp__{args.instance}'
+		domain = f'{args.domain}_mdp'
+		cwd = "temp_" + instance
+		os.makedirs(cwd, exist_ok=True)
+		shutil.copy(os.path.join(domain_folder, instance + ".rddl"), cwd)
+		shutil.copy(os.path.join(domain_folder, domain + ".rddl"), cwd)
+		domain_folder = cwd
+
+	server = RDDLServer(prost_root, domain_folder, args.rounds, args.port)
+	prost = PROST(prost_root, args.port, cwd)
+	with server:
+		if args.num_instances:
+			# Run num_instances instances
+			args.instance = int(args.instance)
+			instances = range(args.instance, args.instance + args.num_instances)
+			print(prost.run_batch(args.domain, instances, args.log))
+		else:
+			# Run single instance of given name
+			print(prost.run(args.instance, args.log))
+
+	if cwd:
+		shutil.rmtree(cwd)
