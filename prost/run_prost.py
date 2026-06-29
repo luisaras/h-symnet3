@@ -24,7 +24,7 @@ def parse_arguments():
 		default=None)
 	parser.add_argument("-l", "--log", help="log output file or directory (if batch).",
 		default=None)
-	parser.add_argument("-p", "--port", help="RDDL sim port",
+	parser.add_argument("-p", "--port", help="shift applied to the RDDLSim port",
 		type=int,
 		default=0)
 	args = parser.parse_args()

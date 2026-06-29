@@ -8,7 +8,6 @@
 #echo "relative_path_domain_file relative_path_instance_file name_of_instance instance_number"
 #echo "./new_instance.sh rddl/domains/sysadmin_mdp.rddl rddl/domains/sysadmin_inst_mdp__900.rddl sysadmin_inst_mdp__900 900"
 
-# Copy the instance file
 (
     # Wait for lock on /var/lock/.myscript.exclusivelock (fd 200) for 10 seconds
     flock -s -x -w 300 200
@@ -25,7 +24,7 @@
     temp_folder=${PWD}/temp_${instance}
     mkdir ${temp_folder}
 
-    # Create dbn and ppddls file
+    # Create dbn and ppddl file
     if [ ! -d "${domain_folder}/dbn" ]; then
         mkdir ${domain_folder}/dbn
     fi
@@ -49,7 +48,7 @@
         mkdir ${domain_folder}/parsed
     fi
     if [ ! -f "${instance_parsed}" ]; then
-        echo "STARTING RDDL-PARSER"
+        echo "STARTING RDDL-PARSER ${instance}"
         ./utils/rddl-parser ${domain_rddl} ${instance_rddl} ${temp_folder}
         echo "FINISHED WITH RDDL-PARSER"
         mv ${temp_folder}/${instance} ${instance_parsed}

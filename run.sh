@@ -1,4 +1,18 @@
 #!/bin/bash
 # See run.py for arguments.
-echo $(pwd)
-podman run --rm -v $HOME:$HOME -w $(pwd) --device "://nvidia.com" --userns=keep-id symnet-env run python run.py "$@"
+if [[ "${IS_WSL}" == "true" ]]; then
+	ROOT=/mnt
+else
+	ROOT=$HOME
+fi
+run_symnet_env() {
+	podman run --rm \
+		--env-host \
+		-v $ROOT:$ROOT \
+		-w $(pwd) \
+		--device "nvidia.com/gpu=all" \
+		--userns=keep-id \
+		symnet-env \
+		"$@"
+}
+run_symnet_env "$@"

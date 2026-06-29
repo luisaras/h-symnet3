@@ -52,12 +52,9 @@ generate_traces() {
 			mkdir data/datasets/${d}
 			mkdir data/logs/${d}
 			echo "Running prost for ${d}..."
-			parallel -j 8 python3 prost/run_prost.py ${d} {} -n 1 -p {} -d benchmarks/${d}/rddl -l data/logs/${d} ::: ${instances[@]}
-			#for i in "${instances[@]}"; do
-			#	python3 prost/run_prost.py ${d} 1 -n ${num_instances} -d benchmarks/${d}/rddl -l data/logs/${d}
-			#done
-			#python $PROST_ROOT ${d}_inst_mdp__${i} [Prost -s 1 -se [IPC2014]] >> data/logs/${d}/${i}.result
-			python3 prost/dataset_builder.py --domain ${d} --save_folder "data/datasets/${d}" --prost_log data/logs/${d} --start_instance 1 --num_instances ${num_instances}
+			printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
+				python3 prost/run_prost.py $d {} -n 1 -p {} -d benchmarks/$d/rddl -l data/logs/$d
+			python3 prost/dataset_builder.py --domain $d --save_folder "data/datasets/$d" --prost_log data/logs/$d --start_instance 1 --num_instances ${num_instances}
 		fi
 	done
 }

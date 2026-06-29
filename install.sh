@@ -3,6 +3,7 @@
 
 set -e
 
+# If an installation path is not defined, use default.
 pushd ..
     if [[ ! -v ${RDDLSIM_ROOT} ]]; then
       export RDDLSIM_ROOT=$PWD/rddlsim
@@ -16,57 +17,64 @@ pushd ..
       export Z3_ROOT=$PWD/z3-prover
       echo "export Z3_ROOT=\"${Z3_ROOT}\"" >> ~/.bashrc
     fi
-    if [[ ! -v ${SSIPP_ROOT} ]]; then
-      export SSIPP_ROOT=$PWD/ssipp
-      echo "export SSIPP_ROOT=\"${SSIPP_ROOT}\"" >> ~/.bashrc
-    fi
 popd
 
-command -v podman >/dev/null 2>&1 || { echo "Error: podman is not installed." >&2; exit 1; }
-podman build -t symnet-env .
-
-if [[ ! -d "$RDDLSIM_ROOT" ]]; then
-    echo "=== Installing RDDLSIM... ==="
-    git clone https://github.com/ssanner/rddlsim.git "$RDDLSIM_ROOT"
-    pushd "$RDDLSIM_ROOT"
-        ./compile
-    popd
+if [[ "${IS_WSL}" == "true" ]]; then
+    ROOT=/mnt
+else
+    ROOT=$HOME
 fi
-echo "RDDLSIM installed."
+run_env_bash() {
+    podman run --rm \
+        --env-host \
+        -v $ROOT:$ROOT \
+        -w $(pwd) \
+        --userns=keep-id \
+        symnet-env \
+        bash -c "$@"
+}
 
-if [[ ! -d "$PROST_ROOT" ]]; then
-    echo "=== Installing PROST... ==="
-    if sudo -n true 2>/dev/null; then
-        sudo apt install git g++ cmake bison flex libbdd-dev
-    else
-        command -v g++ >/dev/null 2>&1 || { echo "Error: g++ is not installed." >&2; exit 1; }
-        command -v cmake >/dev/null 2>&1 || { echo "Error: cmake is not installed." >&2; exit 1; }
-        command -v bison >/dev/null 2>&1 || { echo "Error: bison is not installed." >&2; exit 1; }
-        command -v flex >/dev/null 2>&1 || { echo "Error: flex is not installed." >&2; exit 1; }
-        command -v libbdd-dev >/dev/null 2>&1 || { echo "Error: libbdd-dev is not installed." >&2; exit 1; }
-    fi
-    if [[ ! -d "$Z3_ROOT" ]]; then
-        git clone git@github.com:Z3Prover/z3.git z3_temp
-        pushd z3_temp
-            python3 scripts/mk_make.py --prefix="$Z3_ROOT"
-            cd build
-            make
-            make install
+install_rddlsim() {
+    #if [[ ! -d "${RDDLSIM_ROOT}" ]]; then
+    #    echo "=== Installing RDDLSIM... ==="
+    #    git clone https://github.com/ssanner/rddlsim.git "${RDDLSIM_ROOT}"
+        pushd "${RDDLSIM_ROOT}"
+            run_env_bash "./compile"
         popd
-        rm -rf z3_temp
-    fi
-    git clone https://github.com/prost-planner/prost.git "$PROST_ROOT"
-    pushd "$PROST_ROOT"
-        python3 build.py
-    popd
-fi
-echo "PROST installed."
+    #fi
+    echo "RDDLSIM installed."
+}
 
-if [[ ! -d "$SSIPP_ROOT" ]]; then
-    echo "=== Installing SSIPP... ==="
-    git clone https://gitlab.com/qxcv/ssipp.git "$SSIPP_ROOT"
-    pushd "$SSIPP_ROOT"
-        python3 build.py solver_ssp
+install_z3() {
+    git clone https://github.com/Z3Prover/z3.git z3_temp
+    pushd z3_temp
+        run_env_bash "
+        git checkout z3-4.8.17
+        python3 scripts/mk_make.py --prefix="${Z3_ROOT}"
+        cd build
+        make
+        make install
+        "
     popd
-fi
-echo "SSiPP installed."
+    rm -rf z3_temp
+}
+
+install_prost() {
+    if [[ ! -d "${PROST_ROOT}" ]]; then
+        echo "=== Installing PROST... ==="
+        if [[ ! -d "${Z3_ROOT}" ]]; then
+            install_z3
+        fi
+        git clone https://github.com/prost-planner/prost.git "${PROST_ROOT}"
+        pushd "${PROST_ROOT}"
+            run_env_bash "python3 build.py"
+        popd
+    fi
+    echo "PROST installed."
+}
+
+command -v podman >/dev/null 2>&1 || { echo "Error: podman is not installed." >&2; exit 1; }
+podman build --ulimit nofile=65536:65536 -t symnet-env .
+echo "Podman build complete."
+install_rddlsim
+install_prost

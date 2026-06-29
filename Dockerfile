@@ -14,11 +14,8 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     flex bison build-essential autoconf libtool git \
     libboost-all-dev cmake \
     graphviz \
-    parallel \
+    default-jdk \
     && rm -rf /var/lib/apt/lists/*
-
-# Install uv inside the image for package management
-RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
@@ -26,11 +23,12 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Pre-install all your requirements and NVIDIA CUDA runtimes into the image system layer
-RUN uv pip install --system -r requirements.txt && \
-    uv pip install --system nvidia-cuda-runtime-cu11 nvidia-cudnn-cu11 nvidia-cublas-cu11
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir \
+    nvidia-cuda-runtime-cu11 \
+    nvidia-cublas-cu11 \
+    nvidia-cudnn-cu11
 
 # Replicate your script's LD_LIBRARY_PATH environment settings globally inside the image
 ENV NVIDIA_LIBS=/usr/local/lib/python3.10/site-packages/nvidia
 ENV LD_LIBRARY_PATH=${NVIDIA_LIBS}/cuda_runtime/lib:${NVIDIA_LIBS}/cublas/lib:${NVIDIA_LIBS}/cudnn/lib:${LD_LIBRARY_PATH}
-
-ENTRYPOINT ["uv"]
