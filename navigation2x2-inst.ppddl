@@ -1,0 +1,90 @@
+(define (domain navigation2x2)
+
+  (:requirements :strips :adl :probabilistic-effects)
+
+  (:predicates
+    (at11)
+    (at12)
+    (at21)
+    (at22)
+  )
+
+  (:action move-east-1
+    :precondition (at11)
+    :effect (and
+      (not (at11))
+      (at21)
+    )
+  )
+
+  (:action move-east-2
+    :precondition (at12)
+    :effect (and
+      (not (at12))
+      (at22)
+    )
+  )
+
+  (:action move-west-1
+    :precondition (at21)
+    :effect (and
+      (not (at21))
+      (at11)
+    )
+  )
+
+  (:action move-west-2
+    :precondition (at22)
+    :effect (and
+      (not (at22))
+      (at12)
+    )
+  )
+
+  (:action move-north-1
+    :precondition (at11)
+    :effect (and
+      (not (at11))
+      (at12)
+    )
+  )
+
+  (:action move-north-2
+    :precondition (at21)
+    :effect (and
+      (not (at21))
+      (at22)
+    )
+  )
+
+  (:action move-south-1
+    :precondition (at12)
+    :effect (and
+      (not (at12))
+      (at11)
+    )
+  )
+
+  (:action move-south-2
+    :precondition (at22)
+    :effect (and
+      (not (at22))
+      (at21)
+    )
+  )
+
+)
+
+(define (problem navigation2x2-inst)
+
+  (:domain navigation2x2)
+
+  (:init
+    (at11)
+  )
+
+  (:goal
+    (at22)
+  )
+
+)

@@ -13,29 +13,21 @@
     instance_rddl="${domain_folder}/rddl/${instance}.rddl"
     instance_dbn="${domain_folder}/dbn/${instance}.dot"
     instance_parsed="${domain_folder}/parsed/${instance}"
-    instance_ppddl="${domain_folder}/ppddl/${instance}.ppddl"
 
     temp_folder=${PWD}/temp_${instance}
     mkdir ${temp_folder}
 
-    # Create dbn and ppddl file
+    # Create dbn file
     if [ ! -d "${domain_folder}/dbn" ]; then
         mkdir ${domain_folder}/dbn
     fi
-    if [ ! -d "${domain_folder}/ppddl" ]; then
-        mkdir ${domain_folder}/ppddl
-    fi
-    cat ${domain_rddl} ${instance_rddl} > ${temp_folder}/temp.rddl
-    pushd ${RDDLSIM_ROOT}
     if [ ! -f "${instance_dbn}" ]; then
-        ./run rddl.viz.RDDL2Graph "${temp_folder}/temp.rddl" ${instance}
-        mv tmp_rddl_graphviz.dot ${instance_dbn}
+        cat ${domain_rddl} ${instance_rddl} > ${temp_folder}/temp.rddl
+        pushd ${RDDLSIM_ROOT}
+            ./run rddl.viz.RDDL2Graph "${temp_folder}/temp.rddl" ${instance}
+            mv tmp_rddl_graphviz.dot ${instance_dbn}
+        popd
     fi
-    if [ ! -f "${instance_ppddl}" ]; then
-        ./run rddl.translate.RDDL2Format "${temp_folder}/temp.rddl" ${temp_folder} ppddl
-        mv ${temp_folder}/${instance}.ppddl ${instance_ppddl}
-    fi
-    popd
 
     # Create the parsed file
     if [ ! -d "${domain_folder}/parsed" ]; then

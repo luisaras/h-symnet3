@@ -36,12 +36,11 @@ class Generator():
         self.seed = seed
         random.seed(seed)
     
-    def print_args(self, domain, dataset, args):
+    def args_string(self, domain, dataset, args):
         arg_str = []
         for i, arg_type in enumerate(self.script_args[domain + "-" + dataset]):
             arg_str.append(f'{arg_type["param_name"]}: {args[i]}')
-        print(f"Generating RDDL with arguments [{','.join(arg_str)}]")
-        
+        return ','.join(arg_str)
 
     def validate_args(self, domain, args):
         # CONSTRAINTS
@@ -87,7 +86,6 @@ class Generator():
         while not self.validate_args(domain, args):
             args = self.get_args(domain)
 
-        self.print_args(domain, dataset, args)
         if self.seed:
             args.append(str(self.seed))
         
@@ -95,9 +93,9 @@ class Generator():
         if verbose:
             out, err = None, None
         
+        print(f"Generating RDDL with arguments [{self.args_string(domain, dataset, args)}]")
         try:
-            process = subprocess.run(command + args, cwd=directory, stdout=out, stderr=err)
-            print(process.stdout)
+            subprocess.run(command + args, cwd=directory, stdout=out, stderr=err)
         except subprocess.CalledProcessError as e:
             print(f"Command failed with exit code {e.returncode}")
             print(e.stderr)
@@ -109,7 +107,6 @@ class Generator():
         output_dir = self.get_output_dir(domain)
         instance_name = f'{domain}_inst_mdp__{instance}'
         file = os.path.join(output_dir, instance_name + ".rddl")
-        print(file)
         if os.path.exists(file):
             print("Instance already generated: " + instance_name)
             return True
@@ -130,7 +127,7 @@ if __name__ == '__main__':
     generator = Generator(rddlsim_root)
     if args.seed and args.seed >= 0:
         generator.set_seed(args.seed)
-    for i in range(args.instance, args.instance+args.num_instances):
+    for i in range(args.instance, args.instance + args.num_instances):
         if args.seed == -1:
             generator.set_seed(i)
         instance = str(i)

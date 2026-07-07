@@ -373,6 +373,38 @@ script_args = {
         {'param_name': 'type', 'type': str, 'value': 'default'},
         {'param_name': 'horizon', 'type': int, 'min': 60, 'max': 60},
     ],
+    'navigation-debug1': [
+        {'param_name': 'output-dir', 'type': str},
+        {'param_name': 'instance-name', 'type': str},
+        {'param_name': 'size_x', 'type': int, 'min': 2, 'max': 2},
+        {'param_name': 'size_y', 'type': int, 'min': 2, 'max': 2},
+        {'param_name': 'type', 'type': str, 'value': 'deterministic'},
+        {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10},
+    ],
+    'navigation-debug2': [
+        {'param_name': 'output-dir', 'type': str},
+        {'param_name': 'instance-name', 'type': str},
+        {'param_name': 'size_x', 'type': int, 'min': 2, 'max': 2},
+        {'param_name': 'size_y', 'type': int, 'min': 3, 'max': 3},
+        {'param_name': 'type', 'type': str, 'value': 'deterministic'},
+        {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10},
+    ],
+    'navigation-debug3': [
+        {'param_name': 'output-dir', 'type': str},
+        {'param_name': 'instance-name', 'type': str},
+        {'param_name': 'size_x', 'type': int, 'min': 3, 'max': 3},
+        {'param_name': 'size_y', 'type': int, 'min': 2, 'max': 2},
+        {'param_name': 'type', 'type': str, 'value': 'deterministic'},
+        {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10},
+    ],
+    'navigation-debug4': [
+        {'param_name': 'output-dir', 'type': str},
+        {'param_name': 'instance-name', 'type': str},
+        {'param_name': 'size_x', 'type': int, 'min': 3, 'max': 3},
+        {'param_name': 'size_y', 'type': int, 'min': 3, 'max': 3},
+        {'param_name': 'type', 'type': str, 'value': 'deterministic'},
+        {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10},
+    ],
     # These are for deterministic navigation
     'navigation-det-train': [
         {'param_name': 'output-dir', 'type': str},

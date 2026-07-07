@@ -8,22 +8,24 @@ domains_extra="recon triangle_tireworld elevators"
 domains_lr="academic_advising_chain academic_advising_prob pizza_delivery pizza_delivery_grid pizza_delivery_windy wall stochastic_navigation stochastic_wall corridor"
 
 #declare -a domains=(${domains_ipc})
-num_instances=250
+#first_inst=1
+first_inst=251
+last_inst=254
+num_inst=$((last_inst - first_inst + 1))
 declare -a domains=("navigation")
-#declare -a instances=($(seq 1 ${num_instances}))
-declare -a instances=($(seq 300 303))
-#declare -a instances
-#for ((i=1; i<=num_instances; i++)); do
-#	instances+=("$i")
-#done
+declare -a instances=($(seq ${first_inst} ${last_inst}))
 
-generate_rddl() {
+generate_instances() {
 	echo "Generating RDDL instances."
 	pushd generators
 		for d in "${domains[@]}"; do
-			python3 generate.py ${d} 1 -n 200 -d "train" -s "-1" --skip -v
-			python3 generate.py ${d} 201 -n 10 -d "val" -s "-1" --skip -v
-			python3 generate.py ${d} 211 -n 40 -d "test" -s "-1" --skip -v
+			python3 generate.py ${d} 1 -n 200 -d "train" -s "-1" -v
+			python3 generate.py ${d} 201 -n 10 -d "val" -s "-1" -v
+			python3 generate.py ${d} 211 -n 40 -d "test" -s "-1" -v
+			python3 generate.py ${d} 251 -d "debug1" -s "-1" -v
+			python3 generate.py ${d} 252 -d "debug2" -s "-1" -v
+			python3 generate.py ${d} 253 -d "debug3" -s "-1" -v
+			python3 generate.py ${d} 254 -d "debug4" -s "-1" -v
 		done
 	popd
 }
@@ -38,6 +40,21 @@ preprocess_rddl() {
 	done
 }
 
+plan() {
+	d=$1 # domain
+	if [ ! -d "data/logs/$d" ]; then
+		mkdir data/logs/$d
+	fi
+	echo "Running prost for $d..."
+	printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
+		python3 prost/run_prost.py $d {} -n 1 -p {} -d benchmarks/$d/rddl -l data/logs/$d
+	if [ ! -d "data/datasets/$d" ]; then
+		mkdir data/datasets/$d
+	fi
+	python3 prost/dataset_builder.py $d ${first_inst} -n ${num_inst} -d "data/datasets/$d" -l data/logs/$d
+	compute_heuristics $d
+}
+
 generate_traces() {
 	echo "Create trace datasets with PROST."
 	if [ ! -d "data" ]; then
@@ -47,13 +64,9 @@ generate_traces() {
 	fi
 	for d in "${domains[@]}"; do
 		if [ ! -d "data/datasets/$d" ]; then
-			mkdir data/datasets/$d
-			mkdir data/logs/$d
-			echo "Running prost for $d..."
-			printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
-				python3 prost/run_prost.py $d {} -n 1 -p {} -d benchmarks/$d/rddl -l data/logs/$d
-			python3 prost/dataset_builder.py $d 1 -n ${num_instances} -d "data/datasets/$d" -l data/logs/$d
-			compute_heuristics $d
+			plan $d
+		elif [ "$1" == "replan" ]; then
+			plan $d
 		fi
 	done
 }
@@ -74,14 +87,13 @@ compute_heuristics() {
 
 case "$1" in
 	"generate")
-		generate_rddl
+		generate_instances
 		;;
 	"parse")
 		preprocess_rddl
 		;;
 	"plan")
-		rm -rf data
-		generate_traces
+		generate_traces replan
 		;;
 	"heuristics")
 		for d in "${domains[@]}"; do
@@ -89,7 +101,7 @@ case "$1" in
 		done
 		;;
 	*)
-		generate_traces
+		generate_instances
 		preprocess_rddl
 		generate_traces
 		;;

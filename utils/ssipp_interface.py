@@ -1,8 +1,6 @@
 # ASNet code.
 import importlib
-import os
-import re
-import subprocess
+import sys, os, re, subprocess
 from weakref import proxy, ProxyTypes
 import ssipp  # noqa: F811
 
@@ -14,60 +12,57 @@ def weak_ref_to(obj):
 	return proxy(obj)
 
 
-def convert_symnet_state2(state, ip):
+def convert_symnet_state(state, var_names):
 	"""Converts state dict to a string format that SSiPP can read.
-	ip is the instance_parser of the env."""
+	var_names should convert an index to a RDDL fluent string."""
 
 	# Prop format: "fluent_name arg1 arg2 argN" 
 	format_props = []
 	for i, val in enumerate(state):
 		if val == 1:
 			# format: fluent_name(arg1,args2,argN)
-			var = ip.num_to_state[i].replace("(", " ").replace(")", "").replace(",", " ")
+			var = var_names[i].replace("(", " ").replace(")", "").replace(",", " ")
 			format_props.append(var)
 	format_props.sort()
 	return ', '.join(format_props)
 
-def convert_symnet_state(state, ip):
-	"""Converts state dict to a string format that SSiPP can read.
-	ip is the instance_parser of the env."""
 
-	# Prop format: "fluent_name arg1 arg2 argN" 
-	format_props = []
+class PlannerExtensions(object):
+	"""Wrapper to hold references to SSiPP and MDPSim modules, and references
+	to the relevant loaded problems (like the old ModuleSandbox). Mostly
+	keeping this because it makes it convenient to pass stuff around, as I
+	often need SSiPP and MDPSim at the same time."""
 
-	for var in ip.unpara_fluents:
-		if state[ip.state_to_num[var]] == 1: # true?
-			format_props.append(var)
+	heur_map = {
+	  "lmc": "lm-cut",
+	}
 
-	for fluent_name in ip.para_state_names:  # For each fluent
-		for args in ip.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
-			var = fluent_name + '(' + args + ')'
-			try:  # Features from the mapping of nodes and states to indices
-				index = ip.state_to_num[var] # Get the index of the state variable by name
-				val = float(state[index])
-				if val == 1:
-					prop = fluent_name + " " + args.replace(",", " ")
-					format_props.append(prop)
-			except KeyError as e:
-				pass
-				
-	format_props.sort()
-	return ', '.join(format_props)
+	def __init__(self,
+				 ppddl_files, # instance + domain
+				 instance_name,
+				 heuristics):
+		# SSiPP stuff
+		print(f"Initializing {instance_name} PPDDL problem...")
+		for file in ppddl_files:
+			ssipp.readPDDLFile(file)
+		self.ssipp_problem = ssipp.init_problem(instance_name)
+		if self.ssipp_problem == None:
+			print("Error while initializing the instance: " + instance_name)
+			sys.exit(1)
+		# this leaks for some reason; will store it here so I don't have to reconstruct
+		self.ssp = ssipp.SSPfromPPDDL(self.ssipp_problem)
+		print(f"PPDDL {instance_name} initialized.")
 
+		self.heuristics = [Evaluator(weak_ref_to(self), PlannerExtensions.heur_map[h]) for h in heuristics]
+		self._cache = dict()
 
-def convert_asnet_state(all_props):
-	format_props = []
-	for prop_obj, truth in all_props:
-		if not truth:
-			continue
-		old_prop = prop_obj.identifier
-		assert old_prop[0] == '(', old_prop
-		assert old_prop[-1] == ')', old_prop
-		tokens = old_prop[1:-1].split()
-		name = tokens[0]
-		args = tokens[1:]
-		format_props.append('%s %s' % (name, ' '.join(args)))
-	return ', '.join(format_props)
+	def compute_heuristics(self, state):
+		if state in self._cache:
+			return self._cache[state]
+		else:
+			val = [heur.eval_state(state) for heur in self.heuristics]
+			self._cache[state] = val
+			return val
 
 
 class Evaluator:
@@ -77,22 +72,18 @@ class Evaluator:
 	def __init__(self, planner_exts, heuristic_name):
 		print(f"Initializing heuristic evaluator {heuristic_name}... ")
 		self.ssipp_problem = planner_exts.ssipp_problem
-		heuristic = ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
-		self.evaluator = ssipp.SuccessorEvaluator(heuristic)
-		self.cutter = Cutter(planner_exts)
+		self.heuristic = ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
+		#self.evaluator = ssipp.SuccessorEvaluator(self.heuristic)
+		#self.cutter = Cutter(planner_exts)
 		print(heuristic_name + " initialized.")
 
 	def eval_state(self, ssipp_state):
 		ssipp_state = self.ssipp_problem.get_intermediate_state(ssipp_state)
-		cuts = self.cutter.get_action_cuts(ssipp_state)
-		print("=========== CUTS: " + str(cuts))
-		return self.evaluator.state_value(ssipp_state)
-
-	def succ_probs_vals(self, ssipp_state, action_name):
-		action = self.ssipp_problem.find_action("(" + action_name + ")")
-		assert action is not None, "could not find %r" % (action_name, )
-		return [(e.probability, e.value)
-				for e in self.evaluator.succ_iter(ssipp_state, action)]
+		#cuts = self.cutter.get_action_cuts(ssipp_state)
+		#print("=========== CUTS: " + str(cuts))
+		#return self.evaluator.state_value(ssipp_state)
+		return self.heuristic.value(ssipp_state)
+		return 0
 
 class Cutter:
 	# ssipp appends -prob-j to an action name to signify that it is the j-th
@@ -172,42 +163,6 @@ class LMCutDataGenerator():
 				out_vec[idx][self.IN_LAST_CUT] = 1
 		return out_vec
 
-class PlannerExtensions(object):
-	"""Wrapper to hold references to SSiPP and MDPSim modules, and references
-	to the relevant loaded problems (like the old ModuleSandbox). Mostly
-	keeping this because it makes it convenient to pass stuff around, as I
-	often need SSiPP and MDPSim at the same time."""
-
-	heur_map = {
-	  "lmc": "lm-cut",
-	}
-
-	def __init__(self,
-				 ppddl_file,
-				 instance_name,
-				 heuristics):
-		# SSiPP stuff
-		print(f"Initializing {instance_name} PPDDL problem...")
-		ssipp.readPDDLFile(ppddl_file)
-		self.ssipp_problem = ssipp.init_problem(instance_name)
-		# this leaks for some reason; will store it here so I don't have to reconstruct
-		self.ssp = ssipp.SSPfromPPDDL(self.ssipp_problem)
-		print(f"PPDDL {instance_name} initialized.")
-
-		self.heuristics = [Evaluator(weak_ref_to(self), PlannerExtensions.heur_map[h]) for h in heuristics]
-		self._cache = dict()
-
-	def compute_heuristics(self, state, instance_parser=None):
-		if instance_parser:
-			state = convert_symnet_state2(state, instance_parser)
-			print(state)
-		if state in self._cache:
-			return self._cache[state]
-		else:
-			val = [heur.eval_state(state) for heur in self.heuristics]
-			#val = [0 for heur in self.heuristics]
-			self._cache[state] = val
-			return val
 
 problems = dict()
 def get_planner_exts(ppddl_file, instance_name, heuristics):
