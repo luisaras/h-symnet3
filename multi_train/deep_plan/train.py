@@ -131,9 +131,8 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
 
     # SUPERVISED TRAINING STARTS
     # Training dataset
-    dataset_folder = my_config.trajectory_dataset_folder
     batch_size = my_config.batch_size # fixed at 32
-    dataset_ob = SupervisedDataset(train_instances, env_instance_wrapper, dataset_folder, batch_size, num_episodes=None)
+    dataset_ob = SupervisedDataset(train_instances, env_instance_wrapper, batch_size, num_episodes=None)
     print("Loading datasets.")
 
     # Loss Function
@@ -208,7 +207,7 @@ if __name__ == '__main__':
     
     #For each domain, we generate 1000 training, 100 validation, and 200 test instances with size increasing from train to val to test instances.
     if my_config.setting == "ippc":
-        my_config.train_instance = ",".join(str(900+i) for i in range(20))   
+        my_config.train_instance = ",".join(str(900+i) for i in range(200))   
         my_config.test_instance = ",".join(str(1100+i) for i in range(10))
 
         # Some training files weren't created properly which is why they've been excluded from training

@@ -78,3 +78,12 @@ podman build --ulimit nofile=65536:65536 -t symnet-env .
 echo "Podman build complete."
 install_rddlsim
 install_prost
+
+# WSL patch
+if [[ "${IS_WSL}" == "true" ]]; then
+    mkdir -p /run/user/$(id -u)
+    chown $(id -u):$(id -g) /run/user/$(id -u)
+    sudo loginctl enable-linger $(id -un)
+else
+    
+fi

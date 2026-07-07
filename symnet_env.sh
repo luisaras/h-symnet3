@@ -1,5 +1,8 @@
 #!/bin/bash
-# See run.py for arguments.
+# =============================
+# Run something in the symnet virtual env.
+# Run ./install.sh first to create symnet-env.
+
 if [[ "${IS_WSL}" == "true" ]]; then
 	ROOT=/mnt
 else

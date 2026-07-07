@@ -22,7 +22,7 @@ def parse_arguments():
 		default=30)
 	parser.add_argument("-d", "--directory", help="directory with rddl files",
 		default=None)
-	parser.add_argument("-l", "--log", help="log output file or directory (if batch).",
+	parser.add_argument("-l", "--log", help="log output file or directory.",
 		default=None)
 	parser.add_argument("-p", "--port", help="shift applied to the RDDLSim port",
 		type=int,

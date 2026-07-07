@@ -1,12 +1,6 @@
-
-#rddl/domains/sysadmin_mdp.rddl
-#rddl/domains/sysadmin_inst_mdp__900.rddl
-#sysadmin_inst_mdp__900
-#900
-
-# domain_file instance_file instance_name
-#echo "relative_path_domain_file relative_path_instance_file name_of_instance instance_number"
-#echo "./new_instance.sh rddl/domains/sysadmin_mdp.rddl rddl/domains/sysadmin_inst_mdp__900.rddl sysadmin_inst_mdp__900 900"
+#!/usr/bin/env bash
+# =============================
+# Usage example: ./prepare_instance.sh navigation 15 
 
 (
     # Wait for lock on /var/lock/.myscript.exclusivelock (fd 200) for 10 seconds

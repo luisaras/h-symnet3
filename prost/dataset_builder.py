@@ -3,9 +3,14 @@ import os, argparse
 def create_dataset(domain, start_instance, num_instances, prost_log, save_folder):
 	episodes = []
 	transitions = []
-	for i in range(start_instance, start_instance+num_instances):
+	if num_instances == 1:
+		instances = [start_instance]
+	else:
+		start_instance = int(start_instance)
+		instances = [str(i) for i in range(start_instance, start_instance + num_instances)]
+	for i in instances:
 		episodes = []
-		f = open(os.path.join(prost_log, str(i)+".result"))
+		f = open(os.path.join(prost_log, i+".result"))
 		for line in f.readlines():
 			
 			if ">>> END OF ROUND" in line:
@@ -24,10 +29,10 @@ def create_dataset(domain, start_instance, num_instances, prost_log, save_folder
 			# Immediate reward: -1.000000
 			if "Immediate reward:" in line:
 				reward = line.split(":")[1].strip()
-				transitions.append([str(i), state, action, reward])
+				transitions.append([i, state, action, reward])
 
 
-		f = open(os.path.join(save_folder, str(i)+".csv"), "w")
+		f = open(os.path.join(save_folder, i+".csv"), "w")
 
 		for ep in episodes:
 			for t in ep:
@@ -41,13 +46,14 @@ def create_dataset(domain, start_instance, num_instances, prost_log, save_folder
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument("--domain", help="name of the domain")
-	parser.add_argument("--start_instance", type=int, default="1",
-		help="starting instance number")
-	parser.add_argument("--num_instances", help="number of instances to build dataset for", type=int)
-	parser.add_argument("--prost_log", default=".",
+	parser.add_argument("domain", help="name of the domain")
+	parser.add_argument("instance", help="number of the first instance")
+	parser.add_argument("-n", "--num_instances", help="number of instances (if batch)",
+		type=int,
+		default=None)
+	parser.add_argument("-l", "--prost_log", default=".",
 		help="path of prost logs")
-	parser.add_argument("--save_folder", help="folder to save dataset")
+	parser.add_argument("-d", "--save_folder", help="folder to save dataset")
 	args = parser.parse_args()
 
 	if not os.path.isdir(args.save_folder):
@@ -55,7 +61,7 @@ if __name__ == '__main__':
 	
 	create_dataset(
 		domain=args.domain, 
-		start_instance=args.start_instance,
+		start_instance=args.instance,
 		num_instances=args.num_instances,
 		prost_log=args.prost_log,
 		save_folder=args.save_folder

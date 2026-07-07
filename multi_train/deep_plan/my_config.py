@@ -24,13 +24,14 @@ num_testing_episodes = 30 # Testing episodes when model has been trained
 #test_instance = ""
 
 trajectory_dataset_folder = "../../data/datasets/"
+heuristics_dataset_folder = "../../data/heuristics/"
 max_transitions_per_instance = 300
 last_in_dataset = False # Setting to true might lead to better results since PROST learns while executing
 
 batch_size = 32
 train_epochs = 501
 ckpt_freq = 10
-keep_ckpts = False
+keep_ckpts = True
 lr = 0.001
 use_pretrained = True
 grad_clip_value = 5.0
@@ -48,4 +49,4 @@ num_threads = 4 # Number of threads to parallelize inference
 mode = "no_dist"
 
 net_config=None # custom symnet3_config.py
-heuristics=[]
+heuristics=""

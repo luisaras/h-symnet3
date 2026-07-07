@@ -8,12 +8,11 @@ import helper
 from tqdm import tqdm
 
 class SupervisedDataset(tf.keras.Model):
-	def __init__(self, instance_list, env_instance_wrapper, dataset_folder, batch_size, num_episodes=None):
+	def __init__(self, instance_list, env_instance_wrapper, batch_size, num_episodes=None):
 		super(SupervisedDataset, self).__init__()
 
 		self.instance_list = [int(i) for i in instance_list]
 		self.env_instance_wrapper = env_instance_wrapper
-		self.dataset_folder = dataset_folder
 		self.batch_size = batch_size
 		self.num_episodes = num_episodes
 
@@ -29,16 +28,32 @@ class SupervisedDataset(tf.keras.Model):
 		domain = self.env_instance_wrapper.envs[instance_index].instance_parser.domain
 		action_dict = self.env_instance_wrapper.envs[instance_index].instance_parser.action_to_num
 		action_dict['noop()'] = 0
-		f = "%s/%s/%d.csv" % (self.dataset_folder, domain, instance)
+		f = os.path.join(my_config.trajectory_dataset_folder, domain, instance + ".csv")
 		nrows = None if self.num_episodes is None else self.num_episodes*40
 		df = pd.read_csv(f, delimiter=":", header=None, nrows=nrows)
 
-		instances = np.array(df[0], dtype="float32")
+		#instance = np.array(df[0], dtype="float32")
+
+		if my_config.heuristics:
+			heuristics = dict()
+			hf = os.path.join(my_config.heuristics_dataset_folder, domain, instance + ".csv")
+			hdf = pd.read_csv(hf, delimiter=":", header=None, nrows=None)
+			for row in hdf.iterrows():
+				s = row[0]
+				if s not in heuristics:
+					heuristics[s] = dict()
+				for h, v in zip(row[1], row[1][1:]):
+    				heuristics[s][h] = v
 
 		states = []
-		for e in df[1]:
-			a = np.array(e.split(","), dtype="float32")
-			states.append(a)
+		for s in df[1]: # Second column
+			state = s.split(",")
+			if my_config.heuristics:
+				for h in my_config.heuristics:
+					state.append(heuristics[s][h])
+			state = np.array(state, dtype="float32")
+			states.append(s)
+
 		states = np.stack(states)
 
 		actions = np.expand_dims(np.array(df[2].apply(lambda x: action_dict[x]), dtype="float32"), axis=-1)

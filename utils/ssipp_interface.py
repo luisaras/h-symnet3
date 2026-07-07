@@ -3,74 +3,71 @@ import importlib
 import os
 import re
 import subprocess
-
+from weakref import proxy, ProxyTypes
 import ssipp  # noqa: F811
 
-ABOVE_DIR = os.path.abspath(
-	os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-SSIPP_MANUAL_DIR = os.path.join(ABOVE_DIR, 'ssipp')
+def weak_ref_to(obj):
+	"""Create a weak reference to object if object is not a weak reference. If
+	object is a weak reference, then return that reference unchanged."""
+	if obj is None or isinstance(obj, ProxyTypes):
+		return obj
+	return proxy(obj)
 
 
-def has_ssipp_solver():
-	"""Check whether we have solver_ssp somewhere (this is the SSiPP planner
-	binary, not the SSiPP Python library)."""
-	try:
-		get_ssipp_solver_path_auto()
-		return True
-	except (FileNotFoundError, ImportError):
-		return False
+def convert_symnet_state2(state, ip):
+	"""Converts state dict to a string format that SSiPP can read.
+	ip is the instance_parser of the env."""
+
+	# Prop format: "fluent_name arg1 arg2 argN" 
+	format_props = []
+	for i, val in enumerate(state):
+		if val == 1:
+			# format: fluent_name(arg1,args2,argN)
+			var = ip.num_to_state[i].replace("(", " ").replace(")", "").replace(",", " ")
+			format_props.append(var)
+	format_props.sort()
+	return ', '.join(format_props)
+
+def convert_symnet_state(state, ip):
+	"""Converts state dict to a string format that SSiPP can read.
+	ip is the instance_parser of the env."""
+
+	# Prop format: "fluent_name arg1 arg2 argN" 
+	format_props = []
+
+	for var in ip.unpara_fluents:
+		if state[ip.state_to_num[var]] == 1: # true?
+			format_props.append(var)
+
+	for fluent_name in ip.para_state_names:  # For each fluent
+		for args in ip.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
+			var = fluent_name + '(' + args + ')'
+			try:  # Features from the mapping of nodes and states to indices
+				index = ip.state_to_num[var] # Get the index of the state variable by name
+				val = float(state[index])
+				if val == 1:
+					prop = fluent_name + " " + args.replace(",", " ")
+					format_props.append(prop)
+			except KeyError as e:
+				pass
+				
+	format_props.sort()
+	return ', '.join(format_props)
 
 
-def try_install_ssipp_solver():
-	"""Try to install SSiPP solver (i.e planner binary, not library) if it is
-	not available already."""
-
-	# TODO: make this installer less racy (& do same for try_install_fd)
-
-	if has_ssipp_solver():
-		return
-
-	print("Installing SSiPP's solver to %s" % SSIPP_MANUAL_DIR)
-	if not os.path.exists(SSIPP_MANUAL_DIR):
-		subprocess.run([
-			"git", "clone", "https://gitlab.com/qxcv/ssipp.git",
-			SSIPP_MANUAL_DIR
-		],
-					   check=True,
-					   cwd=ABOVE_DIR)
-		subprocess.run(["python", "build.py", "solver_ssp"],
-					   check=True,
-					   cwd=SSIPP_MANUAL_DIR)
-	ssipp_binary_path = os.path.join(SSIPP_MANUAL_DIR, "solver_ssp")
-	assert os.path.exists(ssipp_binary_path), \
-		"install failed; nothing found at '%s'" % (ssipp_binary_path, )
-
-
-def get_ssipp_solver_path_auto():
-	"""Automagically get path to SSiPP solver_ssp by assuming it's in the same
-	directory as the SSiPP Python module, or that it has been downloaded into
-	the current dir. Let current dir take preference."""
-	# first check current dir
-	current_dir_solver = os.path.join(SSIPP_MANUAL_DIR, 'solver_ssp')
-	if os.path.exists(current_dir_solver):
-		return current_dir_solver
-
-	# if that failed, we check the other dir
-	ssipp_spec = importlib.util.find_spec('ssipp')
-	suggestion = "Maybe it's easier to compile SSiPP manually and use " \
-		"--ssipp-path to specify path? Or use try_install_ssipp_solver()?"
-	if ssipp_spec is None:
-		raise ImportError(
-			"Could not import SSiPP to do auto-magic solver_ssp path "
-			"detection. " + suggestion)
-	ssipp_dir = os.path.dirname(ssipp_spec.origin)
-	solver_ssp_path = os.path.join(ssipp_dir, 'solver_ssp')
-	if not os.path.exists(solver_ssp_path):
-		raise FileNotFoundError(
-			"Could not auto-magically detect SSiPP solver_ssp at '%s'. %s" %
-			(solver_ssp_path, suggestion))
-
-	return solver_ssp_path
+def convert_asnet_state(all_props):
+	format_props = []
+	for prop_obj, truth in all_props:
+		if not truth:
+			continue
+		old_prop = prop_obj.identifier
+		assert old_prop[0] == '(', old_prop
+		assert old_prop[-1] == ')', old_prop
+		tokens = old_prop[1:-1].split()
+		name = tokens[0]
+		args = tokens[1:]
+		format_props.append('%s %s' % (name, ' '.join(args)))
+	return ', '.join(format_props)
 
 
 class Evaluator:
@@ -78,21 +75,24 @@ class Evaluator:
 	# it just evaluating heuristics, or is it planning underneath? Resolve &
 	# rename!
 	def __init__(self, planner_exts, heuristic_name):
-		self._ssipp = planner_exts.ssipp
-		self.problem = planner_exts.ssipp_problem
-		ssp = self._ssipp.SSPfromPPDDL(self.problem)
-		heuristic = self._ssipp.createHeuristic(ssp, heuristic_name)
-		self.evaluator = self._ssipp.SuccessorEvaluator(heuristic)
+		print(f"Initializing heuristic evaluator {heuristic_name}... ")
+		self.ssipp_problem = planner_exts.ssipp_problem
+		heuristic = ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
+		self.evaluator = ssipp.SuccessorEvaluator(heuristic)
+		self.cutter = Cutter(planner_exts)
+		print(heuristic_name + " initialized.")
 
 	def eval_state(self, ssipp_state):
+		ssipp_state = self.ssipp_problem.get_intermediate_state(ssipp_state)
+		cuts = self.cutter.get_action_cuts(ssipp_state)
+		print("=========== CUTS: " + str(cuts))
 		return self.evaluator.state_value(ssipp_state)
 
 	def succ_probs_vals(self, ssipp_state, action_name):
-		action = self.problem.find_action("(" + action_name + ")")
+		action = self.ssipp_problem.find_action("(" + action_name + ")")
 		assert action is not None, "could not find %r" % (action_name, )
 		return [(e.probability, e.value)
 				for e in self.evaluator.succ_iter(ssipp_state, action)]
-
 
 class Cutter:
 	# ssipp appends -prob-j to an action name to signify that it is the j-th
@@ -103,7 +103,7 @@ class Cutter:
 
 	def __init__(self, planner_exts):
 		self.problem = planner_exts.ssipp_problem
-		self.lm_cut = planner_exts.ssipp.LMCutHeuristic(self.problem)
+		self.lm_cut = ssipp.LMCutHeuristic(self.problem)
 		# we cache cuts forever
 		self.cut_cache = {}
 
@@ -125,16 +125,8 @@ class Cutter:
 			self.cut_cache[ssipp_state] = new_cuts
 		return self.cut_cache[ssipp_state]
 
-class SSiPPDataGenerator(ActionDataGenerator):
-	"""Basic class for generators which use SSiPP"""
 
-	def __init__(self, mod_sandbox):
-		# important to have only weak ref to sandbox because the sandbox also
-		# has a ref to us (!)
-		self.mod_sandbox = weak_ref_to(mod_sandbox)
-		self.ssipp_problem = weak_ref_to(self.mod_sandbox.ssipp_problem)
-
-class LMCutDataGenerator(SSiPPDataGenerator):
+class LMCutDataGenerator():
 	"""Adds 'this is in a disjunctive cut'-type flags to propositions."""
 	extra_dim = 3
 	dim_names = ['in-any-cut', 'in-singleton-cut', 'in-last-cut']
@@ -145,13 +137,13 @@ class LMCutDataGenerator(SSiPPDataGenerator):
 	# convention in my SSiPP wrapper, of course.
 	IN_LAST_CUT = 2
 
-	def __init__(self, *args):
-		super().__init__(*args)
-		self.cutter = Cutter(self.mod_sandbox)
+	def __init__(self, planner_exts):
+		self.planner_exts = planner_exts
+		self.cutter = Cutter(planner_exts)
 
 	def get_extra_data_no_memory(self, cstate):
 		out_vec = np.zeros((len(cstate.acts_enabled), self.extra_dim))
-		ssipp_state = cstate.to_ssipp(self.mod_sandbox)
+		ssipp_state = cstate.to_ssipp(self.planner_exts)
 		cuts = self.cutter.get_action_cuts(ssipp_state)
 		in_unary_cut = set()
 		in_any_cut = set()
@@ -180,7 +172,6 @@ class LMCutDataGenerator(SSiPPDataGenerator):
 				out_vec[idx][self.IN_LAST_CUT] = 1
 		return out_vec
 
-
 class PlannerExtensions(object):
 	"""Wrapper to hold references to SSiPP and MDPSim modules, and references
 	to the relevant loaded problems (like the old ModuleSandbox). Mostly
@@ -196,55 +187,33 @@ class PlannerExtensions(object):
 				 instance_name,
 				 heuristics):
 		# SSiPP stuff
+		print(f"Initializing {instance_name} PPDDL problem...")
 		ssipp.readPDDLFile(ppddl_file)
 		self.ssipp_problem = ssipp.init_problem(instance_name)
-		# this leaks for some reason; will store it here so I don't have to
-		# reconstruct
-		self.ssipp_ssp_iface = ssipp.SSPfromPPDDL(self.ssipp_problem)
+		# this leaks for some reason; will store it here so I don't have to reconstruct
+		self.ssp = ssipp.SSPfromPPDDL(self.ssipp_problem)
+		print(f"PPDDL {instance_name} initialized.")
 
-		self.heuristics = [Evaluator(weak_ref_to(self), heur_map[h]) for h in heuristics]
+		self.heuristics = [Evaluator(weak_ref_to(self), PlannerExtensions.heur_map[h]) for h in heuristics]
+		self._cache = dict()
 
+	def compute_heuristics(self, state, instance_parser=None):
+		if instance_parser:
+			state = convert_symnet_state2(state, instance_parser)
+			print(state)
+		if state in self._cache:
+			return self._cache[state]
+		else:
+			val = [heur.eval_state(state) for heur in self.heuristics]
+			#val = [0 for heur in self.heuristics]
+			self._cache[state] = val
+			return val
 
-	@property
-	def ssipp_dead_end_value(self):
-		return ssipp.get_dead_end_value()
-
-	def compute_heuristics(self, state, instance_parser):
-		state = self.convert_state(state, instance_parser)
-		return [heur.eval_state(state) for heur in self.heuristics]
-
-	def convert_state(self, state, ip):
-		"""Converts true prop list to string format that SSiPP can read.
-		all_props can be obtained from an MDPSimObservation instance's props_true
-		attributes."""
-
-		format_props = []
-        if len(ip.unpara_fluents) != 0:
-            for (i, st) in enumerate(sorted(ip.unpara_fluents)):
-                if state[ip.state_to_num[st]] == 1: # true?
-                	format_props.add(st)
-
-        for st in ip.para_state_names:  # For each fluent
-            for node in ip.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
-                stn = st + '(' + node + ')'
-                try:  # Assign features from the mapping of nodes and states to indices
-                	val = float(state[ip.state_to_num[stn]])
-                    if val == 1:
-                    	format_props.add(st + " " + node.replace(",",""))
-                except KeyError as e:
-                    pass
-
-        return ', '.join(format_props)
-
-		#format_props = []
-		#for prop_obj, truth in all_props:
-		#	if not truth:
-		#		continue
-		#	old_prop = prop_obj.identifier
-		#	assert old_prop[0] == '(', old_prop
-		#	assert old_prop[-1] == ')', old_prop
-		#	tokens = old_prop[1:-1].split()
-		#	name = tokens[0]
-		#	args = tokens[1:]
-		#	format_props.append('%s %s' % (name, ' '.join(args)))
-		return ', '.join(format_props)
+problems = dict()
+def get_planner_exts(ppddl_file, instance_name, heuristics):
+	if instance_name in problems:
+		return problems[instance_name]
+	else:
+		planner_exts = PlannerExtensions(ppddl_file, instance_name, heuristics)
+		problems[instance_name] = planner_exts
+		return planner_exts

@@ -11,8 +11,9 @@ import shutil
 
 from gym import Env
 from gym.utils import seeding
+from gym.envs.rddl.instance_parser import InstanceParser
 
-from instance_parser import InstanceParser
+curr_dir_path = os.path.dirname(os.path.realpath(__file__))
 
 redirect = True
 def redirect_stdout():
@@ -24,9 +25,10 @@ def redirect_stdout():
 	sys.stdout = os.fdopen(newstdout, 'w')
 
 class RDDLEnv(Env):
-	def __init__(self, domain, instance):
+	def __init__(self, domain="navigation", instance="1"):
 		self.domain = domain + '_mdp'
 		self.problem = domain + '_inst_mdp__' + instance
+		self.instance = instance
 
 		# Instance Graph
 		self.instance_parser = InstanceParser(domain, instance)
@@ -35,7 +37,7 @@ class RDDLEnv(Env):
 		self._seed()
 
 		# The file needed for 
-		with open(self.instance_parser.parsed_file_name, "r") as f:
+		with open(self.instance_parser.parsed_instance_file, "r") as f:
 			p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
 			for l in f:
 				if (p == "## horizon\n"):
@@ -83,15 +85,15 @@ class RDDLEnv(Env):
 		self.rddlsim.step.restype = ctypes.c_double
 
 		# Better without the explicit encoding
-		parsed_file_name_byteobject = self.instance_parser.parsed_file_name.encode()
-		parsed_file_name_ctype = ctypes.create_string_buffer(parsed_file_name_byteobject, len(parsed_file_name_byteobject))
+		parsed_instance_file_byteobject = self.instance_parser.parsed_instance_file.encode()
+		parsed_instance_file_ctype = ctypes.create_string_buffer(parsed_instance_file_byteobject, len(parsed_instance_file_byteobject))
 
 		if redirect:
 			sys.stdout.flush()
 			_origstdout = sys.stdout
 			_oldstdout_fno = os.dup(sys.stdout.fileno())
 			redirect_stdout()
-		self.rddlsim.parse(parsed_file_name_ctype.value)
+		self.rddlsim.parse(parsed_instance_file_ctype.value)
 		if redirect:
 			sys.stdout = _origstdout
 			sys.stdout.flush()

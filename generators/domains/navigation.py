@@ -41,12 +41,12 @@ def generate_instance(instance_name, w, h, t, horizon):
 			for j in range(2, h):
 				p = safe_chance(i)
 				if p > 0:
-					nonfluents.append(f"P(x{i}, y{j}) = {p};")
+					nonfluents.append(f"P(x{i},y{j}) = {p};")
 		else:
 			for j in range(2, h):
 				p = danger_chance(i)
 				if p > 0:
-					nonfluents.append(f"P(x{i}, y{j}) = {p};")
+					nonfluents.append(f"P(x{i},y{j}) = {p};")
 
 	xpos = ",".join(xpos)
 	ypos = ",".join(ypos)
@@ -82,15 +82,17 @@ if __name__ == "__main__":
 		seed = args.pop(6)
 		random.seed(int(seed))
 	if len(args) != 6:
-		print("Wrong number of args")
+		print("Wrong number of args. Usage: out-dir instance_name width height type horizon [seed]")
 		sys.exit(-1)
-	out_dir = args.pop(0)
-	instance_name = args[0]
-	x = int(args[1])
-	y = int(args[2])
-	t = args[3]
-	h = int(args[4])
-	content = generate_instance(instance_name, x, y, t, h)
+
+	out_dir = args[0]
+	instance_name = args[1]
+	width = int(args[2])
+	height = int(args[3])
+	type = args[4]
+	horizon = int(args[5])
+
+	content = generate_instance(instance_name, width, height, type, horizon)
 	os.makedirs(out_dir, exist_ok=True)
 	file = os.path.join(out_dir, instance_name + ".rddl")
 	with open(file, "w") as f:

@@ -16,10 +16,10 @@ def setup(config):
     global my_config
     my_config = config
     global benchmark_folder
-    benchmark_folder = os.path.abspath(my_config.benchmark_folder, domain)
+    benchmark_folder = os.path.abspath(my_config.benchmark_folder)
 
 class InstanceParser(object):
-    def __init__(self, domain, instance):
+    def __init__(self, domain="navigation", instance="1"):
         self.domain = domain
         self.instance = instance
 
@@ -28,6 +28,7 @@ class InstanceParser(object):
         self.instance_file = os.path.join(self.domain_folder, "rddl", domain + "_inst_mdp__" + instance + ".rddl")
         self.parsed_instance_file = os.path.join(self.domain_folder, "parsed", domain + "_inst_mdp__" + instance)
         self.dot_file = os.path.join(self.domain_folder, "dbn", domain + "_inst_mdp__" + instance + ".dot")
+        self.planner_exts = None
 
         # Read domain description
         try:
@@ -39,12 +40,21 @@ class InstanceParser(object):
         # Read instance description
         with open(self.instance_file) as f:
             self.instance_file_str = f.read()
+
         # Contains information about action preconditions, and hashing
-        with open(self.parsed_instance_file) as f:
-            self.parsed_instance_file_str = f.read()
+        if os.path.isfile(self.instance_file):
+            with open(self.parsed_instance_file) as f:
+                self.parsed_instance_file_str = f.read()
+        else:
+            raise ValueError(f"File {self.instance_file} doesn't exist. Run './prepare_instance.sh {domain} {instance}' first.")
+
         # DBN instance
-        with open(self.dot_file) as f:
-            self.dot_instance_file_str = f.read()
+        if os.path.isfile(self.dot_file):
+            with open(self.dot_file) as f:
+                self.dot_instance_file_str = f.read()
+        else:
+            raise ValueError(f"File {self.dot_file} doesn't exist. Run './prepare_instance.sh {domain} {instance}' first.")
+
         # parameters from dbn
         self.color = {  # Refer to the paper for an example of a dbn
             'initial_state': 'lightblue',  # Initial State visualized in this color in dbn
@@ -317,10 +327,8 @@ class InstanceParser(object):
             if self.color['final_state'] in line:  # Identify line as defining final state
                 c = re.findall('\".*?\"', line)[0][1:-1]
                 if '$' in c:
-                    obj = c[c.find('$'):c.find(')')].replace('$', '').replace(' ',
-                                                                            '')  # Object associated with that node (c1,c2 in sysadmin) ((x1,x2) in navigation)
-                    state_var = c[:c.find('\'')].replace('$',
-                                                        '')  # The predicate variable (running in sysadmin, robot-at in navigation)
+                    obj = c[c.find('$'):c.find(')')].replace('$','').replace(' ','')  # Object associated with that node (c1,c2 in sysadmin) ((x1,x2) in navigation)
+                    state_var = c[:c.find('\'')].replace('$','')  # The predicate variable (running in sysadmin, robot-at in navigation)
                     self.object_names.add(obj)
                     self.para_state_names.add(state_var)
                     if obj not in self.para_state_of_objects:
@@ -420,7 +428,7 @@ class InstanceParser(object):
                     self.para_state_of_objects_nf_values_names[key].append(nf[0])
 
                 for c in pr:
-                    node = c[c.find("(") + 1:c.find(")")]
+                    node = c[c.find("(") + 1:c.find(")")].replace(" ", "")
                     self.para_state_of_objects_nf_values[node][-1] = 1 - nf[2]  # Set it to true
             else:
                 pr = re.findall('{}\(.*\) = [-+]?[0-9]*\.?[0-9]+'.format(nf[0]), self.instance_file_str)
@@ -431,7 +439,7 @@ class InstanceParser(object):
                     self.para_state_of_objects_nf_values_names[key].append(nf[0])
 
                 for c in pr:
-                    node = c[c.find("(") + 1:c.find(")")]
+                    node = c[c.find("(") + 1:c.find(")")].replace(" ", "")
                     self.para_state_of_objects_nf_values[node][-1] = float(c.split("=")[-1])
 
         for k, nf in enumerate(sorted(self.multiple_nf_names)):  # For all multiple non fluents (Repeat same thing as above)
@@ -454,7 +462,7 @@ class InstanceParser(object):
                 for key in self.para_state_of_objects_nf_values_names.keys():
                     self.para_state_of_objects_nf_values_names[key].append(nf[0])
                 for c in pr:
-                    node = c[c.find("(") + 1:c.find(")")]
+                    node = c[c.find("(") + 1:c.find(")")].replace(" ", "")
                     self.para_state_of_objects_nf_values[node][-1] = float(c.split("=")[-1].strip(";"))
         # Vishal End: Add non-fluent values again due to adding new nodes.
 
@@ -794,11 +802,12 @@ class InstanceParser(object):
         if len(self.unpara_fluents) != 0:
             for (i, st) in enumerate(sorted(self.unpara_fluents)):
                 f_features[:, -i - 1] = state[self.state_to_num[st]]
-        if self.planner_exts:
-            heuristic_features = self.planner_exts.compute_heuristics(state, self)
-            n = len(self.unpara_fluents)
-            for (i, hf) in enumerate(heuristic_features):
-                f_features[:, -(i+n) - 1] = hf
+
+        #if self.planner_exts:
+        #    heuristic_features = self.planner_exts.compute_heuristics(state, self)
+        #    n = len(self.unpara_fluents)
+        #    for (i, hf) in enumerate(heuristic_features):
+        #        f_features[:, -(i+n) - 1] = hf
 
         for st in self.para_state_names:  # For each fluent
             for node in self.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
