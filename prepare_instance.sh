@@ -22,10 +22,16 @@
         mkdir ${domain_folder}/dbn
     fi
     if [ ! -f "${instance_dbn}" ]; then
+        echo "Generating .dot file for ${instance}..."
         cat ${domain_rddl} ${instance_rddl} > ${temp_folder}/temp.rddl
         pushd ${RDDLSIM_ROOT}
             ./run rddl.viz.RDDL2Graph "${temp_folder}/temp.rddl" ${instance}
-            mv tmp_rddl_graphviz.dot ${instance_dbn}
+            if [ -f "tmp_rddl_graphviz.dot" ]; then
+                mv tmp_rddl_graphviz.dot ${instance_dbn}
+                echo "${instance}.dot generated."
+            else
+                echo "ERROR generating DBN ${instance}.dot!"
+            fi            
         popd
     fi
 
@@ -34,10 +40,14 @@
         mkdir ${domain_folder}/parsed
     fi
     if [ ! -f "${instance_parsed}" ]; then
-        echo "STARTING RDDL-PARSER ${instance}"
+        echo "Starting rddl-parser for ${instance}..."
         ./utils/rddl-parser ${domain_rddl} ${instance_rddl} ${temp_folder}
-        echo "FINISHED WITH RDDL-PARSER"
-        mv ${temp_folder}/${instance} ${instance_parsed}
+        if [ -f "${temp_folder}/${instance}" ]; then
+            mv ${temp_folder}/${instance} ${instance_parsed}
+            echo "${instance} parsed."
+        else
+            echo "ERROR parsing ${instance}!"
+        fi
     fi
 
     rm -r ${temp_folder}

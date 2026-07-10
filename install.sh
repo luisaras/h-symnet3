@@ -35,13 +35,13 @@ run_env_bash() {
 }
 
 install_rddlsim() {
-    #if [[ ! -d "${RDDLSIM_ROOT}" ]]; then
-    #    echo "=== Installing RDDLSIM... ==="
-    #    git clone https://github.com/ssanner/rddlsim.git "${RDDLSIM_ROOT}"
+    if [[ ! -d "${RDDLSIM_ROOT}" ]]; then
+        echo "=== Installing RDDLSIM... ==="
+        git clone https://github.com/ssanner/rddlsim.git "${RDDLSIM_ROOT}"
         pushd "${RDDLSIM_ROOT}"
             run_env_bash "./compile"
         popd
-    #fi
+    fi
     echo "RDDLSIM installed."
 }
 
