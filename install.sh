@@ -85,5 +85,21 @@ if [[ "${IS_WSL}" == "true" ]]; then
     chown $(id -u):$(id -g) /run/user/$(id -u)
     sudo loginctl enable-linger $(id -un)
 else
-    
+# Server patch
+    podman run --rm -it \
+      --device /dev/nvidia0 \
+      --device /dev/nvidiactl \
+      --device /dev/nvidia-uvm \
+      -v /usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro \
+      --env LD_LIBRARY_PATH=/host-nvidia \
+      docker.io/ubuntu:22.04 \
+      bash -c "
+        apt-get update && apt-get install -y kmod && \
+        ln -s /host-nvidia/nvidia-smi /usr/bin/nvidia-smi || true && \
+        if [ -f /host-nvidia/nvidia-smi ]; then
+          /host-nvidia/nvidia-smi
+        else
+          find /host-nvidia -name '*smi*'
+        fi
+      "
 fi

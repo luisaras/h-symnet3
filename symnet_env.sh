@@ -5,15 +5,17 @@
 
 if [[ "${IS_WSL}" == "true" ]]; then
 	ROOT=/mnt
+	GPU_FLAGS="--device \"nvidia.com/gpu=all\""
 else
 	ROOT=$HOME
+	GPU_FLAGS="--device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm -v /usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro --env LD_LIBRARY_PATH=/host-nvidia"
 fi
 run_symnet_env() {
 	podman run --rm \
 		--env-host \
 		-v $ROOT:$ROOT \
 		-w $(pwd) \
-		--device "nvidia.com/gpu=all" \
+		${GPU_FLAGS} \
 		--userns=keep-id \
 		symnet-env \
 		"$@"
