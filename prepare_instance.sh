@@ -41,7 +41,7 @@
     fi
     if [ ! -f "${instance_parsed}" ]; then
         echo "Starting rddl-parser for ${instance}..."
-        ./utils/rddl-parser ${domain_rddl} ${instance_rddl} ${temp_folder}
+        ./prost/rddl-parser ${domain_rddl} ${instance_rddl} ${temp_folder}
         if [ -f "${temp_folder}/${instance}" ]; then
             mv ${temp_folder}/${instance} ${instance_parsed}
             echo "${instance} parsed."

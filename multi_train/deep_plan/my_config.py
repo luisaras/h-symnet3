@@ -49,4 +49,4 @@ num_threads = 4 # Number of threads to parallelize inference
 mode = "no_dist"
 
 net_config=None # custom symnet3_config.py
-heuristics=""
+heuristics=[]

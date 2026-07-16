@@ -1,13 +1,12 @@
 import sys, os, argparse
-import ssipp_interface
 import pandas as pd
-import numpy as np
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
 root_path = os.path.abspath(os.path.join(curr_dir_path, ".."))
 if root_path not in sys.path:
 	sys.path = [root_path] + sys.path
 
+from heuristics import ssipp_interface
 from multi_train.deep_plan import my_config
 from gym.envs.rddl import instance_parser
 
@@ -25,15 +24,73 @@ def parse_arguments():
 	return parser.parse_args()
 
 
+def convert_symnet_state(state, var_names):
+	"""Converts state dict to a string format that SSiPP can read.
+	var_names should convert an index to a RDDL fluent string."""
+
+	# Prop format: "fluent_name arg1 arg2 argN" 
+	format_props = []
+	for i, val in enumerate(state):
+		if val == 1:
+			# format: fluent_name(arg1,args2,argN)
+			var = var_names[i].replace("(", " ").replace(")", "").replace(",", " ")
+			format_props.append(var)
+	format_props.sort()
+	return ', '.join(format_props)
+
+def convert_prost_state(state, var_names):
+	s = [float(i) for i in state.split(",")]
+	return convert_symnet_state(s, var_names)
+
+
+class PlannerWrapper:
+	def __init__(self, server=None):
+		self.server = server
+		if server:
+			self.planner_exts = server.service.get_planner_exts()
+		self.dataset = dict()
+
+	def add_cache(self, file):
+		with open(file, "r") as f:
+			for line in f:
+				row = line.split(":")
+				values = row[1].strip().split(",")
+				h = dict()
+				for name, v in zip(values, values[1:]):
+					h[name] = float(v)
+				state_str = convert_prost_state(row[0].strip(), self.instance_parser.num_to_state)
+				self.dataset[state_str] = [h[name] for name in self.instance_parser.heuristic_names]
+		self.null_heuristics = [0] * self.instance_parser.get_num_heuristics()
+
+	def compute_heuristics(self, state):
+		state_str = convert_symnet_state(state, self.instance_parser.num_to_state)
+		if state_str in self.dataset:
+			return self.dataset[state_str]
+		elif self.server:
+			return self.planner_exts.compute_heuristics(state_str)
+		else:
+			return self.null_heuristics
+
+
+wrappers = dict()
+def get_planner_wrapper(ppddl_file, instance_name, heuristics):
+	if instance_name in wrappers:
+		return wrappers[instance_name]
+	else:
+		problem_server = None#make_planner_server(ppddl_file, instance_name, heuristics)
+		wrapper = PlannerWrapper(problem_server)
+		wrappers[instance_name] = wrapper
+		return wrapper
+
+
 def compute_heuristics(states, heuristic_names, planner_exts, index_map):
 	def convert(s):
-		return ssipp_interface.convert_symnet_state(s, index_map)
+		return convert_prost_state(s, index_map)
 	results = dict()
 	for s in states:
 		if s in results:
 			continue
-		state = np.array(s.split(","), dtype="float32")
-		values = planner_exts.compute_heuristics(convert(state))
+		values = planner_exts.compute_heuristics(convert(s))
 		heuristics = [name + "," + str(h) for name, h in zip(heuristic_names, values)]
 		results[s] = s + ":" + ",".join(heuristics) + "\n"
 	return results
@@ -58,7 +115,7 @@ if __name__ == '__main__':
 		save_file = os.path.join(args.dataset, "heuristics", args.domain, args.instance + ".csv")
 		planner_exts = ssipp_interface.PlannerExtensions([ppddl_file], problem, args.heuristics)
 		# RDDL parser
-		my_config.heuristics = ",".join(args.heuristics)
+		my_config.heuristics = args.heuristics
 		my_config.benchmark_folder = os.path.abspath(args.benchmark)
 		instance_parser.setup(my_config)
 		index_map = instance_parser.InstanceParser(args.domain, args.instance).num_to_state

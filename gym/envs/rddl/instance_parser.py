@@ -28,7 +28,8 @@ class InstanceParser(object):
         self.instance_file = os.path.join(self.domain_folder, "rddl", domain + "_inst_mdp__" + instance + ".rddl")
         self.parsed_instance_file = os.path.join(self.domain_folder, "parsed", domain + "_inst_mdp__" + instance)
         self.dot_file = os.path.join(self.domain_folder, "dbn", domain + "_inst_mdp__" + instance + ".dot")
-        self.planner_exts = None
+        self.planner_wrapper = None
+        self.heuristic_names = my_config.heuristics
 
         # Read domain description
         try:
@@ -123,7 +124,33 @@ class InstanceParser(object):
                 else:
                     self.type_encoding[item][k] = 0
 
+    def set_planner_wrapper(self, planner_wrapper):
+        self.planner_wrapper = planner_wrapper
+        planner_wrapper.instance_parser = self
+        h_file = os.path.join(my_config.heuristics_dataset_folder, self.domain, self.instance + '.csv')
+        planner_wrapper.add_cache(h_file)
+
     def parse_instance_file(self):
+        p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
+        for l in self.parsed_instance_file_str.splitlines():
+            if (p == "## horizon"):
+                self.horizon = int(l)
+            elif (p == "## number of actions"
+                and self.domain != 'academic_advising'):
+                num_act = int(l)
+            elif (p == "## number of action fluents"
+                and self.domain == 'academic_advising'):
+                num_act = int(l) + 1
+            elif (p == "## number of det state fluents"):
+                num_det = int(l)
+            elif (p == "## number of prob state fluents"):
+                num_prob = int(l)
+            elif (p == "## initial state"):
+                self.initial_state_values = [int(i) for i in l.split()]
+                break
+            p = l
+        self.num_state_vars = num_det + num_prob  # number of state variables
+
         psr = self.parsed_instance_file_str[
             self.parsed_instance_file_str.find("#####TASK##### Here") +
             len("#####TASK##### Here"):self.parsed_instance_file_str.find(
@@ -161,6 +188,7 @@ class InstanceParser(object):
         self.prob_str = [i.strip().split('\n') for i in self.prob_str]  # Probability Transitions
         for ac in self.prob_str:
             self.state_to_num[ac[2].replace(' ', '')] = int(ac[11])
+
         self.num_to_state = {v: k for k, v in self.state_to_num.items()}  # Inverse mapping
 
         # Getting reward formula
@@ -801,25 +829,26 @@ class InstanceParser(object):
 
         if len(self.unpara_fluents) != 0:
             for (i, st) in enumerate(sorted(self.unpara_fluents)):
-                f_features[:, -i - 1] = state[self.state_to_num[st]]
+                var_num = self.state_to_num[st]
+                f_features[:, -i - 1] = state[var_num]
 
-        #if self.planner_exts:
-        #    heuristic_features = self.planner_exts.compute_heuristics(state, self)
-        #    n = len(self.unpara_fluents)
-        #    for (i, hf) in enumerate(heuristic_features):
-        #        f_features[:, -(i+n) - 1] = hf
+        if my_config.heuristics:
+            k = len(self.unpara_fluents)
+            h = self.planner_wrapper.compute_heuristics(state)
+            for (i, name) in enumerate(my_config.heuristics):
+                f_features[:, -i - 1 - k] = h[i]
 
         for st in self.para_state_names:  # For each fluent
             for node in self.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
                 stn = st + '(' + node + ')'
+                node_index = self.node_dict[node]
+                fluent_index = self.fluent_state_dict[st]
                 try:  # Assign features from the mapping of nodes and states to indices
-                    f_features[self.node_dict[node]][self.fluent_state_dict[st]] = float(state[self.state_to_num[stn]])
+                    var_index = self.state_to_num[stn]
+                    value = float(state[var_index])
                 except KeyError as e:
-                    f_features[self.node_dict[node]][self.fluent_state_dict[st]] = 0
-                except:
-                    pdb.set_trace()
-                    print("something is wrong")
-                    exit(0)
+                    value = 0
+                f_features[node_index][fluent_index] = value
 
         return f_features
 
@@ -828,9 +857,14 @@ class InstanceParser(object):
 
     def get_graph_fluent_features(self, state):
         gf = []
-        for key, item in self.state_to_num.items():
+        for key, i in self.state_to_num.items():
             if key in self.unpara_state_names:  # If unparametrized fluents , append it to the graph embedding
-                gf.append(state[item])
+                gf.append(state[i])
+
+        if my_config.heuristics:
+            h = self.planner_wrapper.compute_heuristics(state)
+            gf.extend(h)
+
         return gf
 
     def get_feature_dims(self):
@@ -848,7 +882,6 @@ class InstanceParser(object):
     def get_nf_features(self):
         return self.nf_features
 
-
     def get_num_action_nodes(self):  # Number of nodes corresponding to state variable tuples
         return len(self.extended_node_dict) - len(self.node_dict)
 
@@ -856,7 +889,10 @@ class InstanceParser(object):
         return self.num_nodes
 
     def get_num_graph_fluents(self):
-        return len(list(self.unpara_state_names))
+        return len(list(self.unpara_state_names)) + self.get_num_heuristics()
+
+    def get_num_heuristics(self):
+        return len(my_config.heuristics) if my_config.heuristics else 0
 
     def get_num_type_actions(self):
         return self.num_types_action

@@ -13,7 +13,7 @@ if root_path not in sys.path:
 import gym
 from gym.envs.rddl import instance_parser
 
-from utils.ssipp_interface import get_planner_exts
+from heuristics.compute_heuristics import get_planner_wrapper
 
 def load_config(file=None):
 	if file:
@@ -66,8 +66,8 @@ def make_envs(instances):
 			if my_config.heuristics:
 				domain_folder = env.instance_parser.domain_folder
 				ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
-				heuristics = my_config.heuristics.split(",")
-				env.instance_parser.planner_exts = get_planner_exts(ppddl_file, env.problem, heuristics)
+				planner_wrapper = get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
+				env.instance_parser.set_planner_wrapper(planner_wrapper)
 			envs.append(env)
 		except ValueError as e:
 			print(e)

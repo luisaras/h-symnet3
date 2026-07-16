@@ -82,7 +82,7 @@ compute_heuristics() {
 	fi
 	echo "Computing heuristics for $d..."
 	printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
-		python3 utils/compute_heuristics.py $d {}
+		python3 heuristics/compute_heuristics.py $d {}
 }
 
 case "$1" in

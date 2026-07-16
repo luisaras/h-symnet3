@@ -40,9 +40,9 @@ def get_env_var(name):
 if __name__ == "__main__":
 	args = parse_arguments()
 	if args.quick:
-		train_instances = "[300, 302, 303]"
-		val_instances = "[300, 301]"
-		test_instances = "[300, 301]"
+		train_instances = "[251, 252, 253]"
+		val_instances = "[251, 254]"
+		test_instances = "[251, 254]"
 	elif my_config.setting == "lr":
 		train_instances = "range(1, 1001)"
 		val_instances = "range(101, 1101)"
@@ -66,9 +66,9 @@ if __name__ == "__main__":
 		if ckpt >= 0:
 			file.write(f"\nexact_checkpoint = '{ckpt}'")
 		if args.heuristics:
-			heuristics = ','.join(args.heuristics)
+			heuristics = ",".join([f"'{h}'" for h in args.heuristics])
 			print("Using heuristics: " + heuristics)
-			file.write(f"\nheuristics = '{heuristics}'")
+			file.write(f"\nheuristics = [{heuristics}]")
 
 	root = "/mnt" if get_env_var("IS_WSL") == "true" else os.path.expanduser("~")
 	cwd = os.path.abspath("multi_train/deep_plan/")

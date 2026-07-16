@@ -96,7 +96,7 @@ def build_rddl(instance_name, w, h, horizon, P):
 	nonfluents = []
 	for i in range(1, w + 1):
 		if i > 1:
-			nonfluents.append(f"WEST(x{i},y{i-1});")
+			nonfluents.append(f"WEST(x{i},x{i-1});")
 		if i < w:
 			nonfluents.append(f"EAST(x{i},x{i+1});")
 	for j in range(1, h + 1):

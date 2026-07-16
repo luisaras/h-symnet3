@@ -2,7 +2,6 @@
 import importlib
 import sys, os, re, subprocess
 from weakref import proxy, ProxyTypes
-import ssipp  # noqa: F811
 
 def weak_ref_to(obj):
 	"""Create a weak reference to object if object is not a weak reference. If
@@ -10,22 +9,6 @@ def weak_ref_to(obj):
 	if obj is None or isinstance(obj, ProxyTypes):
 		return obj
 	return proxy(obj)
-
-
-def convert_symnet_state(state, var_names):
-	"""Converts state dict to a string format that SSiPP can read.
-	var_names should convert an index to a RDDL fluent string."""
-
-	# Prop format: "fluent_name arg1 arg2 argN" 
-	format_props = []
-	for i, val in enumerate(state):
-		if val == 1:
-			# format: fluent_name(arg1,args2,argN)
-			var = var_names[i].replace("(", " ").replace(")", "").replace(",", " ")
-			format_props.append(var)
-	format_props.sort()
-	return ', '.join(format_props)
-
 
 class PlannerExtensions(object):
 	"""Wrapper to hold references to SSiPP and MDPSim modules, and references
@@ -41,10 +24,12 @@ class PlannerExtensions(object):
 				 ppddl_files, # instance + domain
 				 instance_name,
 				 heuristics):
+		import ssipp
 		# SSiPP stuff
 		print(f"Initializing {instance_name} PPDDL problem...")
 		for file in ppddl_files:
 			ssipp.readPDDLFile(file)
+		self.ssipp = ssipp
 		self.ssipp_problem = ssipp.init_problem(instance_name)
 		if self.ssipp_problem == None:
 			print("Error while initializing the instance: " + instance_name)
@@ -72,8 +57,8 @@ class Evaluator:
 	def __init__(self, planner_exts, heuristic_name):
 		print(f"Initializing heuristic evaluator {heuristic_name}... ")
 		self.ssipp_problem = planner_exts.ssipp_problem
-		self.heuristic = ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
-		#self.evaluator = ssipp.SuccessorEvaluator(self.heuristic)
+		self.heuristic = planner_exts.ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
+		#self.evaluator = planner_exts.ssipp.SuccessorEvaluator(self.heuristic)
 		#self.cutter = Cutter(planner_exts)
 		print(heuristic_name + " initialized.")
 
@@ -83,7 +68,6 @@ class Evaluator:
 		#print("=========== CUTS: " + str(cuts))
 		#return self.evaluator.state_value(ssipp_state)
 		return self.heuristic.value(ssipp_state)
-		return 0
 
 class Cutter:
 	# ssipp appends -prob-j to an action name to signify that it is the j-th
@@ -94,7 +78,7 @@ class Cutter:
 
 	def __init__(self, planner_exts):
 		self.problem = planner_exts.ssipp_problem
-		self.lm_cut = ssipp.LMCutHeuristic(self.problem)
+		self.lm_cut = planner_exts.ssipp.LMCutHeuristic(self.problem)
 		# we cache cuts forever
 		self.cut_cache = {}
 
@@ -162,13 +146,4 @@ class LMCutDataGenerator():
 			if act_name in in_last_cut:
 				out_vec[idx][self.IN_LAST_CUT] = 1
 		return out_vec
-
-
-problems = dict()
-def get_planner_exts(ppddl_file, instance_name, heuristics):
-	if instance_name in problems:
-		return problems[instance_name]
-	else:
-		planner_exts = PlannerExtensions(ppddl_file, instance_name, heuristics)
-		problems[instance_name] = planner_exts
-		return planner_exts
+		

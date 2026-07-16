@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -28,31 +29,16 @@ class SupervisedDataset(tf.keras.Model):
 		domain = self.env_instance_wrapper.envs[instance_index].instance_parser.domain
 		action_dict = self.env_instance_wrapper.envs[instance_index].instance_parser.action_to_num
 		action_dict['noop()'] = 0
-		f = os.path.join(my_config.trajectory_dataset_folder, domain, instance + ".csv")
+		f = os.path.join(my_config.trajectory_dataset_folder, domain, f"{instance}.csv")
 		nrows = None if self.num_episodes is None else self.num_episodes*40
 		df = pd.read_csv(f, delimiter=":", header=None, nrows=nrows)
 
 		#instance = np.array(df[0], dtype="float32")
 
-		if my_config.heuristics:
-			heuristics = dict()
-			hf = os.path.join(my_config.heuristics_dataset_folder, domain, instance + ".csv")
-			hdf = pd.read_csv(hf, delimiter=":", header=None, nrows=None)
-			for row in hdf.iterrows():
-				s = row[0]
-				if s not in heuristics:
-					heuristics[s] = dict()
-				for h, v in zip(row[1], row[1][1:]):
-    				heuristics[s][h] = v
-
 		states = []
 		for s in df[1]: # Second column
-			state = s.split(",")
-			if my_config.heuristics:
-				for h in my_config.heuristics:
-					state.append(heuristics[s][h])
-			state = np.array(state, dtype="float32")
-			states.append(s)
+			state = np.array(s.split(","), dtype="float32")
+			states.append(state)
 
 		states = np.stack(states)
 
