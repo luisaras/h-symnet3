@@ -1,5 +1,9 @@
+#!/usr/bin/env python3
+# =============================================================================
+
 import sys, os, io, ast, argparse, subprocess
 from pathlib import Path
+
 from multi_train.deep_plan import my_config
 
 def parse_arguments():
@@ -7,17 +11,21 @@ def parse_arguments():
 		prog, max_help_position=38
 	)
 	parser = argparse.ArgumentParser(
-		description="Run SymNet3.0 from directory defined "
+		description="Run SymNet3.0 in the directory defined "
 		"by environment variable SYMNET_ROOT.",
 		formatter_class=formatter,
 	)
 	parser.add_argument("domain", help="domain name")
-	parser.add_argument("-m", "--model", help="model type", default="standard")
-	parser.add_argument("-e", "--epochs", type=int, help="train epochs", default=None)
-	parser.add_argument("-r", "--restore", help="load from checkpoint instead of training from scratch", action="store_true")
+	parser.add_argument("-m", "--model", help="model type",
+		default="standard")
+	parser.add_argument("-e", "--epochs", help="train epochs", 
+		type=int, default=None)
+	parser.add_argument("-r", "--restore", help="load from checkpoint instead of training from scratch",
+		action="store_true")
 	parser.add_argument("-f", "--heuristics", help="heuristic features (lmc, hadd, hmax)",
 		nargs="*", default=[])
-	parser.add_argument("-q", "--quick", help="for quick tests (uses fewer instances)", action="store_true")
+	parser.add_argument("-q", "--quick", help="for quick tests (uses fewer instances)",
+		action="store_true")
 	args = parser.parse_args()
 	return args
 

@@ -8,12 +8,52 @@ domains_extra="recon triangle_tireworld elevators"
 domains_lr="academic_advising_chain academic_advising_prob pizza_delivery pizza_delivery_grid pizza_delivery_windy wall stochastic_navigation stochastic_wall corridor"
 
 #declare -a domains=(${domains_ipc})
-#first_inst=1
-first_inst=251
-last_inst=254
-num_inst=$((last_inst - first_inst + 1))
 declare -a domains=("navigation")
-declare -a instances=($(seq ${first_inst} ${last_inst}))
+
+prepare() {
+	case "$1" in
+		"generate")
+			set_instances $2 $3
+			generate_instances
+			;;
+		"parse")
+			set_instances $2 $3
+			preprocess_rddl
+			;;
+		"plan")
+			set_instances $2 $3
+			generate_traces replan
+			;;
+		"heuristics")
+			set_instances $2 $3
+			for d in "${domains[@]}"; do
+				compute_heuristics $d
+			done
+			;;
+		*)
+			set_instances $1 $2
+			generate_instances
+			preprocess_rddl
+			generate_traces
+			;;
+	esac
+}
+
+set_instances() {
+	if [[ -z "$1" ]]; then
+		first_inst=1
+	else
+		first_inst=$1
+	fi
+	if [[ -z "$2" ]]; then
+		last_inst=254
+	else
+		last_inst=$2
+	fi
+	num_inst=$((last_inst - first_inst + 1))
+	declare -ga instances=($(seq ${first_inst} ${last_inst}))
+	echo "Preparing instances ${first_inst} to ${last_inst} of domains: ${domains[@]}"
+}
 
 generate_instances() {
 	echo "Generating RDDL instances."
@@ -85,24 +125,4 @@ compute_heuristics() {
 		python3 heuristics/compute_heuristics.py $d {}
 }
 
-case "$1" in
-	"generate")
-		generate_instances
-		;;
-	"parse")
-		preprocess_rddl
-		;;
-	"plan")
-		generate_traces replan
-		;;
-	"heuristics")
-		for d in "${domains[@]}"; do
-			compute_heuristics $d
-		done
-		;;
-	*)
-		generate_instances
-		preprocess_rddl
-		generate_traces
-		;;
-esac
+prepare $1 $2 $3

@@ -1,20 +1,21 @@
+#!/usr/bin/env python3
+# =============================================================================
+
 import sys
 import os
 import multiprocessing
-import my_config
-from env_instance_wrapper import EnvInstanceWrapper
 import time
 import pickle
 import pdb
 import random
 import numpy as np
 
+import my_config
+from env_instance_wrapper import EnvInstanceWrapper
+
 lock = multiprocessing.Lock()
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-gym_path = os.path.abspath(os.path.join(curr_dir_path, "../.."))
-if gym_path not in sys.path:
-    sys.path = [gym_path] + sys.path
 network_path = os.path.abspath(os.path.join(curr_dir_path,"networks"))
 if network_path not in sys.path:
     sys.path = [network_path] + sys.path
