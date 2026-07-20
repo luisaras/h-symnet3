@@ -78,6 +78,7 @@ if __name__ == "__main__":
 			print("Using heuristics: " + heuristics)
 			file.write(f"\nheuristics = [{heuristics}]")
 
+	cmd = ["podman"]
 	if get_env_var("IS_WSL") == "true":
 		gpu_flags=["--device", "\"nvidia.com/gpu=all\""]
 		root = "/mnt"
@@ -88,10 +89,11 @@ if __name__ == "__main__":
 			"-v", "/usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro",
 			"--env", "LD_LIBRARY_PATH=/host-nvidia"]
 		root = os.path.expanduser("~")
+		cmd += ["--cdi-spec-dir=" + root + "/.config/cdi"]
 
 	cwd = os.path.abspath("multi_train/deep_plan/")
-	cmd = ["podman", "run",
-		"--rm", "--env-host",
+	cmd += ["run", "--rm",
+		"--env-host",
 		"--userns=keep-id"
 		"-v", root + ":" + root,
 		"-w", cwd]
