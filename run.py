@@ -78,15 +78,26 @@ if __name__ == "__main__":
 			print("Using heuristics: " + heuristics)
 			file.write(f"\nheuristics = [{heuristics}]")
 
-	root = "/mnt" if get_env_var("IS_WSL") == "true" else os.path.expanduser("~")
+	if get_env_var("IS_WSL") == "true":
+		gpu_flags=["--device", "\"nvidia.com/gpu=all\""]
+		root = "/mnt"
+	else:
+		gpu_flags=["--device", "/dev/nvidia0",
+			"--device", "/dev/nvidiactl",
+			"--device", "/dev/nvidia-uvm",
+			"-v", "/usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro",
+			"--env", "LD_LIBRARY_PATH=/host-nvidia"]
+		root = os.path.expanduser("~")
+
 	cwd = os.path.abspath("multi_train/deep_plan/")
 	cmd = ["podman", "run",
-		"--rm", "--env-host", 
+		"--rm", "--env-host",
+		"--userns=keep-id"
 		"-v", root + ":" + root,
-		"-w", cwd,
-		"--device", '"nvidia.com/gpu=all"',
-		"--userns=keep-id",
-		"symnet-env"]
+		"-w", cwd]
+	cmd += gpu_flags
+	cmd += ["symnet-env"]
+
 	config_path = os.path.abspath("temp_config.py")
 	if args.epochs:
 		cmd += ["python3", "train.py", config_path]
