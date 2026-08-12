@@ -94,7 +94,7 @@ if __name__ == "__main__":
 	cwd = os.path.abspath("multi_train/deep_plan/")
 	cmd += ["run", "--rm",
 		"--env-host",
-		"--userns=keep-id"
+		"--userns=keep-id",
 		"-v", root + ":" + root,
 		"-w", cwd]
 	cmd += gpu_flags
@@ -105,6 +105,7 @@ if __name__ == "__main__":
 		cmd += ["python3", "train.py", config_path]
 	else:
 		cmd += ["python3", "test.py", config_path]
+	print(" ".join(cmd))
 	try:
 		process = subprocess.run(cmd)
 		#print(process.stdout)
