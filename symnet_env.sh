@@ -2,6 +2,7 @@
 # =============================
 # Run something in the symnet virtual env.
 # Run ./install.sh first to create symnet-env.
+# Usage example: ./symnet_env.sh ./prepare.sh
 
 if [[ "${IS_WSL}" == "true" ]]; then
 	ROOT=/mnt

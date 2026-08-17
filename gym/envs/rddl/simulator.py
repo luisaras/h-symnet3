@@ -40,6 +40,7 @@ class RDDLSimulator:
 	# State is np.array
 	def reset(self, state=None):
 		if not state:
+			self.tstep = 1  # current time step
 			state = np.array(self.initial_state)
 		self.state = state.tolist()
 		return state

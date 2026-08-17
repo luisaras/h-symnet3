@@ -31,15 +31,15 @@ load_saved_dataset = False
 # Performs one network update from the given batch (x, y). 
 # Returns two values the policy loss and the aux loss (None if not enabled).
 # @tf.function
-def train_step(network, x, y, instance, env_instance_wrapper, loss_fn, optimizer, grad_clip_value, step, multiplier=0.0):
+def train_step(network, x, y, env_index, env_wrapper, loss_fn, optimizer, grad_clip_value, multiplier=0.0):
     if my_config.add_aux_loss:
         with tf.GradientTape() as policynet_tape:
-            policynet_pred, dist_attn_coef = network.policy_prediction(x, instance, env_instance_wrapper, return_attn_coef=True)
+            policynet_pred, dist_attn_coef = network.policy_prediction(x, env_index, env_wrapper, return_attn_coef=True)
             policynet_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)(y, policynet_pred)
             if my_config.use_fluent_for_kl:
-                random_node = tf.constant(random.randint(0, len(env_instance_wrapper.envs[instance].instance_parser.fluent_nodes)-1), dtype=tf.int32)
+                random_node = tf.constant(random.randint(0, len(env_wrapper.envs[env_index].instance_parser.fluent_nodes)-1), dtype=tf.int32)
             else:
-                random_node = tf.constant(random.randint(0, len(env_instance_wrapper.envs[instance].instance_parser.node_dict)-1), dtype=tf.int32)
+                random_node = tf.constant(random.randint(0, len(env_wrapper.envs[env_index].instance_parser.node_dict)-1), dtype=tf.int32)
             
             random_heads = tf.constant(random.sample(list(np.arange(0, dist_attn_coef.shape[3])), k=2), dtype=tf.int32)
             attn_coef0 = dist_attn_coef[:,random_node,:,random_heads[0]] # shape-> BXN
@@ -56,7 +56,7 @@ def train_step(network, x, y, instance, env_instance_wrapper, loss_fn, optimizer
 
     else:
         with tf.GradientTape() as policynet_tape:
-            policynet_pred = network.policy_prediction(x, instance, env_instance_wrapper)
+            policynet_pred = network.policy_prediction(x, env_index, env_wrapper)
             policynet_loss = loss_fn(y, policynet_pred)
         grads_of_policynet = policynet_tape.gradient(policynet_loss, network.trainable_variables)
         grads_of_policynet = tf.clip_by_global_norm(grads_of_policynet, grad_clip_value)
@@ -91,14 +91,14 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
     helper.add_network_args(args, envs_[0], MODEL_DIR)
 
     model_factory = ModelFactory(args)
-    env_instance_wrapper = EnvInstanceWrapper(envs_[:N_train_instances])
+    env_wrapper = EnvInstanceWrapper(envs_[:N_train_instances])
 
-    network = model_factory.create_network(env_instance_wrapper)
-    network.init_network(env_instance_wrapper, 0)
+    network = model_factory.create_network(env_wrapper)
+    network.init_network(env_wrapper, 0)
     print("Network created.")
 
-    network_copy = model_factory.create_network(env_instance_wrapper)
-    pe = PolicyMonitor(
+    network_copy = model_factory.create_network(env_wrapper)
+    policy_monitor = PolicyMonitor(
         envs=helper.make_envs(test_instances),
         network=network,
         domain=my_config.domain,
@@ -107,9 +107,9 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
         model_factory=model_factory,
         network_copy=network_copy)
 
-    network.init_network(env_instance_wrapper, 0)
-    pe.network_copy.init_network(env_instance_wrapper, 0)
-    pe.copy_params()
+    network.init_network(env_wrapper, 0)
+    policy_monitor.network_copy.init_network(env_wrapper, 0)
+    policy_monitor.copy_params()
     print("Created policy monitor.")
 
     for e in envs_:
@@ -123,34 +123,38 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
     ckpt_manager = tf.train.CheckpointManager(ckpt, CHECKPOINT_DIR, 2000)
     model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
 
+    step = 0
+    start_epoch = 0
     if my_config.use_pretrained:
         model_factory.load_ckpt(ckpt_num=None)
         print("Loaded model from checkpoint: " + str(model_factory.ckpt_manager.latest_checkpoint))
+        step = network.trained_steps.numpy()
+        start_epoch = network.trained_epochs.numpy()
 
     # SUPERVISED TRAINING STARTS
     # Training dataset
     batch_size = my_config.batch_size # fixed at 32
-    dataset_ob = SupervisedDataset(train_instances, env_instance_wrapper, batch_size, num_episodes=None)
+    dataset_ob = SupervisedDataset(train_instances, env_wrapper, batch_size, num_episodes=None)
     print("Loading datasets.")
 
     # Loss Function
     loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     grad_clip_value = model_factory.grad_clip_value
-    step = 0
     best_val_reward = -float('inf')
     best_ckpt = ""
-    for epoch in range(my_config.train_epochs):
+    ins_log = []
+    for epoch in range(start_epoch, my_config.train_epochs):
         print("\n\n------Start of epoch %d" % (epoch,))
-        start_time = time.time()
         random.shuffle(dataset_ob.instance_order)
         for ins in dataset_ob.instance_order:
             # Get samples from the current instance's dataset
-            instance, states, actions = dataset_ob.dataset[ins]
+            env_index, states, actions = dataset_ob.dataset[ins]
             total_size = len(states)
             cur_loc = 0
 
             # Uses all samples to train
             while cur_loc < total_size:
+                # Take them in batches
                 if cur_loc + batch_size < total_size:
                     x = states[cur_loc: cur_loc + batch_size]
                     y = actions[cur_loc: cur_loc + batch_size]
@@ -160,30 +164,42 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
                     y = actions[cur_loc:]
                     cur_loc = total_size+1
 
-                multiplier = 0
+                kl_multiplier = 0
                 if my_config.add_aux_loss:
                     if my_config.decay_aux_loss:
                         if step < 2000:
-                            multiplier = 0.1
+                            kl_multiplier = 0.1
                         elif 2000 <= step < 3000:
-                            multiplier = 0.1 * (3000 - step) / 1000
+                            kl_multiplier = 0.1 * (3000 - step) / 1000
                     else:
-                        multiplier = 0.1
-                    
+                        kl_multiplier = 0.1
+
+                start_time = time.time()
                 # Each batch_size samples, do an update
-                loss_value, aux_value = train_step(network, x, y, instance, env_instance_wrapper, loss_fn, model_factory.policynet_optim, grad_clip_value, step, multiplier=multiplier)
+                loss_value, aux_value = train_step(network, x, y, env_index, env_wrapper,
+                    loss_fn=loss_fn,
+                    optimizer=model_factory.policynet_optim,
+                    grad_clip_value=grad_clip_value,
+                    multiplier=kl_multiplier)
+                ins_log.append((epoch, ins, time.time() - start_time, loss_value))
                 step += 1
+                network.trained_steps.assign(step)
 
             if my_config.add_aux_loss:
                 print("Instance %d \t| Total steps: %d | Imitation loss: %.4f | KL loss: %.4f | KL multiplier: %.4f" % (ins, step-1, float(loss_value), float(aux_value), multiplier))
             else:
                 print("Instance %d \t| Total steps: %d | Imitation loss: %.4f" % (ins, step-1, float(loss_value)))
-            
+        
+        network.trained_epochs.assign(epoch)
+
         # Validation
         if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
-            pe.copy_params()
-            _, _, eval_time, total_rewards, save_path = pe.eval_once(meta_logging=True, num_episodes=my_config.num_validation_episodes)
-            val_reward = np.mean(total_rewards)
+            policy_monitor.copy_params()
+            results, save_path = policy_monitor.eval_once(
+                #meta_logging=True, 
+                num_episodes=my_config.num_validation_episodes
+            )
+            val_reward = np.mean(results["total_reward_means"])
             print(f"This checkpoint has a reward of {val_reward}, best is {best_val_reward}.")
             if not my_config.keep_ckpts:
                 if val_reward <= best_val_reward:
@@ -197,7 +213,17 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
                     best_ckpt = save_path
                     print("Deleting previous.")
             best_val_reward = max(best_val_reward, val_reward)
-                
+
+            with open(save_path + "_losses.csv", 'w') as f:
+                f.write("epoch\tins\ttime\tloss\n")
+                for (e, ins, t, loss) in ins_log:
+                    f.write(f"{e}\t{ins}\t{t}\t{loss}\n")
+            with open(save_path + "_rewards.csv", 'w') as f:
+                f.write("ins\treward\tlength\ttime\n")
+                for (env, rewards_i, lengths_i, times_i) in zip(policy_monitor.envs, results["ep_rewards"], results["ep_lengths"], results["ep_times"]):
+                    for r, l, t in zip(rewards_i, lengths_i, times_i):
+                        f.write(f"{env.instance}\t{r}\t{l}\t{t}\n")
+            ins_log = []
 
 if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None

@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # =============================
+# Prepare domain files (rddl, ppddl, dot, parsed) and precompute datasets and heuristics.
+# Usage examples:
+#	./symnet_env.sh ./prepare.sh
+#	./symnet_env.sh ./prepare.sh generate 1 254
+#	./symnet_env.sh ./prepare.sh parse 1 254
+#	./symnet_env.sh ./prepare.sh plan 1 210
+#	./symnet_env.sh ./prepare.sh plan 251 254
 
 set -e
 
@@ -33,7 +40,7 @@ prepare() {
 		*)
 			set_instances $1 $2
 			generate_instances
-			preprocess_rddl
+			preprocess_rddl skip
 			generate_traces
 			;;
 	esac
@@ -75,7 +82,7 @@ preprocess_rddl() {
 	for d in "${domains[@]}"; do
 		for i in "${instances[@]}"
 		do
-			./prepare_instance.sh ${d} $i
+			./prepare_instance.sh ${d} $i $1
 		done
 	done
 }

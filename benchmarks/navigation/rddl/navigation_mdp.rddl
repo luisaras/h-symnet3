@@ -101,7 +101,12 @@ domain navigation_mdp {
 	
 	// 0 reward for reaching goal, -1 in all other cases
 	reward = [sum_{?x : xpos, ?y : ypos} -(GOAL(?x,?y) ^ ~robot-at(?x,?y))]; 
-	
+
+//	termination {
+//		[sum_{?x : xpos, ?y : ypos} robot-at(?x,?y)] == 0;
+//		exists_{?x : xpos, ?y : ypos} [ GOAL(?x,?y) ^ robot-at(?x,?y) ];
+//	};
+
 //	state-action-constraints {
 //	
 //		// Robot at exactly one position

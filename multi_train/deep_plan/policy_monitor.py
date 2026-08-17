@@ -28,13 +28,16 @@ class PolicyMonitor(object):
 				verbose=False, test_envs=None, expert=None, meta_logging=False, get_attn_map=False, get_node_emb=False):
 
 		verbose = False
-		start = time.time()
+		start_time = time.time()
+		mean_times = []
 		mean_total_rewards = []
 		std_total_rewards = []
 		std_error_rewards = []
 		mean_episode_lengths = []
 		previous_action = 0
 		total_rewards = []
+		lengths = []
+		times = []
 		image_name = None
 		if plot_graph:
 			file_name = os.path.abspath(os.path.join(file_name, "graphs"))
@@ -51,7 +54,8 @@ class PolicyMonitor(object):
 			if verbose:
 				print("env = %d" % (i))
 			rewards_i = []
-			episode_lengths_i = []
+			lengths_i = []
+			times_i = []
 
 			#  Update file name for plotting
 			if plot_graph:
@@ -64,6 +68,7 @@ class PolicyMonitor(object):
 				state = initial_state
 				episode_reward = 0.0
 				episode_length = 0
+				episode_start = time.time()
 				print("----------------------------\n\n") if verbose else None
 				while not done:
 
@@ -126,18 +131,23 @@ class PolicyMonitor(object):
 
 
 				rewards_i.append(episode_reward)
-				episode_lengths_i.append(episode_length)
+				lengths_i.append(episode_length)
+				times_i.append(time.time() - episode_start)
 			mean_total_reward = np.mean(rewards_i)
-			mean_episode_length = np.mean(episode_lengths_i)
+			mean_episode_length = np.mean(lengths_i)
+			mean_time = np.mean(times_i)
 			std_total_reward = np.std(rewards_i)
 			mean_total_rewards.append(mean_total_reward)
 			mean_episode_lengths.append(mean_episode_length)
 			std_total_rewards.append(std_total_reward)
 			std_error_rewards.append(std_total_reward / math.sqrt(num_episodes))
 			total_rewards.append(rewards_i)
+			mean_times.append(mean_time)
+			lengths.append(lengths_i)
+			times.append(times_i)
 			print("Instance:", i, "Mean reward:", mean_total_reward)
 
-		end = time.time() - start
+		total_time = time.time() - start_time
 
 
 		str_to_print = ",".join([str(mr) for mr in mean_total_rewards]) + "\n"
@@ -148,9 +158,22 @@ class PolicyMonitor(object):
 		print("std_total_rewards = " + str(std_error_rewards))
 		print("==============")
 		print(str_to_print)
+
+		results = dict(
+			total_time=total_time,
+			# Per instance
+			total_reward_means=mean_total_reward,
+			error_rewards_stds=std_error_rewards,
+			total_rewards_stds=std_total_rewards,
+			length_means=mean_episode_lengths,
+			time_means=mean_times,
+			# Per instance, per episode
+			ep_rewards=total_rewards,
+			ep_lengths=lengths,
+			ep_times=times,
+		)
 		if get_attn_map:
-			return mean_total_rewards, mean_episode_lengths, end, total_rewards, attn_maps, save_path
-		elif get_node_emb:
-			return mean_total_rewards, mean_episode_lengths, end, total_rewards, node_embs, save_path
-		else:
-			return mean_total_rewards, mean_episode_lengths, end, total_rewards, save_path
+			results["attn_maps"] = attn_maps
+		if get_node_emb:
+			results["node_embs"] = node_embs
+		return results, save_path

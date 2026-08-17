@@ -57,13 +57,10 @@ class Worker(object):
 
 	def evaluate(self, num_episodes=5, save_model=True, get_random = False, plot_graph=False, file_name=None, test_envs=None, get_attn_map=False, get_node_emb=False):
 		self.policy_monitor.copy_params()
+		results, _ = self.policy_monitor.eval_once(num_episodes, save_model, get_random, plot_graph, file_name, test_envs=test_envs, get_attn_map=get_attn_map, get_node_emb=get_node_emb)
 		if get_attn_map:
-			_,_,eval_time,total_rewards, attn_maps, save_path = self.policy_monitor.eval_once(num_episodes, save_model, get_random, plot_graph, file_name,test_envs=test_envs, get_attn_map=get_attn_map, get_node_emb=get_node_emb)
-			return total_rewards, eval_time, attn_maps
+			return results["ep_rewards"], results["total_time"], results["attn_maps"]
 		elif get_node_emb:
-			_,_,eval_time,total_rewards, node_embs, save_path = self.policy_monitor.eval_once(num_episodes, save_model, get_random, plot_graph, file_name,test_envs=test_envs, get_attn_map=get_attn_map, get_node_emb=get_node_emb)
-			return total_rewards, eval_time, node_embs
+			return results["ep_rewards"], results["total_time"], results["node_embs"]
 		else:
-			_,_,eval_time,total_rewards, save_path = self.policy_monitor.eval_once(num_episodes, save_model, get_random, plot_graph, file_name,test_envs=test_envs, get_attn_map=get_attn_map, get_node_emb=get_node_emb)
-			return total_rewards, eval_time
-		
+			return results["ep_rewards"], results["total_time"]

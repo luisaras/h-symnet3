@@ -49,10 +49,10 @@ class SymNet3(tf.keras.Model):
             self.se_params["num_edge_types"] = self.se_params["num_se"]
         
         if self.preprocess_gat:
-            self.se_list_preprocess = self.get_state_encoder(self.se_params["num_preprocess"], env_instance_wrapper)
-            self.se_list_postprocess = self.get_state_encoder(self.se_params["num_postprocess"], env_instance_wrapper)
+            self.se_list_preprocess = self.create_state_encoders(self.se_params["num_preprocess"], env_instance_wrapper)
+            self.se_list_postprocess = self.create_state_encoders(self.se_params["num_postprocess"], env_instance_wrapper)
         else:
-            self.se_list_postprocess = self.get_state_encoder(self.se_params["num_postprocess"], env_instance_wrapper)
+            self.se_list_postprocess = self.create_state_encoders(self.se_params["num_postprocess"], env_instance_wrapper)
         
         
         self.final_node_embedder = tf.keras.layers.Dense(units=self.se_params["out_dim"], activation=self.se_params["activation"])
@@ -62,6 +62,9 @@ class SymNet3(tf.keras.Model):
         self.num_action_dim = self.se_params["out_dim"]
         self.action_decoders = self.get_action_decoder()
         self.value_decoders = self.get_action_decoder()
+
+        self.trained_steps = tf.Variable(0, trainable=False) 
+        self.trained_epochs = tf.Variable(0, trainable=False) 
 
 
     def get_node_feature_dim(self, env_instance_wrapper):
@@ -78,11 +81,11 @@ class SymNet3(tf.keras.Model):
         ckpt_parts["action_decoders"] = self.action_decoders
         return ckpt_parts
 
-    def init_network(self, env_wrapper, instance):
-        initial_state, _ = env_wrapper.envs[instance].reset()  # Initial state
-        self.policy_prediction(states=[initial_state], instance=instance, env_wrapper=env_wrapper)
+    def init_network(self, env_wrapper, env_index):
+        initial_state, _ = env_wrapper.envs[env_index].reset()  # Initial state
+        self.policy_prediction(states=[initial_state], env_index=env_index, env_wrapper=env_wrapper)
 
-    def get_state_encoder(self, num_se, env_instance_wrapper):
+    def create_state_encoders(self, num_se, env_instance_wrapper):
         se_list = []
         if self.use_edge_types:
             args = dict((k, self.se_params[k]) for k in gat_params)
@@ -100,9 +103,9 @@ class SymNet3(tf.keras.Model):
             action_decoders.append(ActionDecoder(self.ad_params))
         return action_decoders
 
-    def get_parsed_state(self, states, instance, env_wrapper):
-        adjacency_matrix, node_features, graph_features = env_wrapper.get_parsed_state(states, instance)
-        action_details = env_wrapper.get_action_details(instance)
+    def get_parsed_state(self, states, env_index, env_wrapper):
+        adjacency_matrix, node_features, graph_features = env_wrapper.get_parsed_state(states, env_index)
+        action_details = env_wrapper.get_action_details(env_index)
 
         if self.use_bidir_edges:
             adjacency_matrix = adjacency_matrix + tf.transpose(adjacency_matrix, perm=[0, 1, 3, 2])
@@ -111,7 +114,7 @@ class SymNet3(tf.keras.Model):
         return adjacency_matrix, node_features, graph_features, action_details
 
 
-    def policy_prediction_helper(self, batch_size, adjacency_matrix_full, env_wrapper, instance, graph_features, action_details, se_embed_l, sample, training, prune_actions):
+    def policy_prediction_helper(self, batch_size, adjacency_matrix_full, env_wrapper, env_index, graph_features, action_details, se_embed_l, sample, training, prune_actions):
         node_embed = tf.concat(se_embed_l, axis=-1)
         final_node_embedding = self.final_node_embedder(node_embed)
         global_embed = tf.reshape(tf.concat([tf.reduce_max(final_node_embedding, axis=1), graph_features], axis=1), [batch_size, -1])
@@ -121,8 +124,8 @@ class SymNet3(tf.keras.Model):
             global_embed = tf.concat([global_embed, global_embed_pool], axis=-1)
 
         action_scores = [0 for i in range(len(action_details))]  # Score of each action
-        action_affects = env_wrapper.envs[instance].instance_parser.action_affects
-        remove_dbn = env_wrapper.envs[instance].instance_parser.remove_dbn
+        action_affects = env_wrapper.envs[env_index].instance_parser.action_affects
+        remove_dbn = env_wrapper.envs[env_index].instance_parser.remove_dbn
         for i in range(len(action_details)):
             action_template = action_details[i][0]
             input_nodes = list(action_details[i][1])
@@ -161,21 +164,21 @@ class SymNet3(tf.keras.Model):
             logits = tf.nn.log_softmax(action_scores)
             if prune_actions:
                 # Get the actions you want to keep
-                masks = env_wrapper.get_prune_mask(states, instance)
+                masks = env_wrapper.get_prune_mask(states, env_index)
                 masks = logits.dtype.min * (1.0 - masks)
                 logits += masks
             return tf.random.categorical(logits=logits, num_samples=batch_size, dtype=tf.int32)  # Return sampled actions
         else:
             if prune_actions:
                 # Get the actions you want to keep
-                masks = env_wrapper.get_prune_mask(states, instance)
+                masks = env_wrapper.get_prune_mask(states, env_index)
                 masks = -10e9 * (1.0 - masks)
                 action_scores += masks
             probs = tf.nn.softmax(action_scores)  # Expected shape is (batch_size,num_actions)
             return probs
 
-    def policy_prediction(self, states, instance, env_wrapper, sample=False, action=None, plot_graph=False, file_name=None, action_taken=None, training=True, prune_actions=False, return_attn_coef=False, return_node_emb=False):
-        adjacency_matrix, node_features, graph_features, action_details = self.get_parsed_state(states, instance, env_wrapper)
+    def policy_prediction(self, states, env_index, env_wrapper, sample=False, action=None, plot_graph=False, file_name=None, action_taken=None, training=True, prune_actions=False, return_attn_coef=False, return_node_emb=False):
+        adjacency_matrix, node_features, graph_features, action_details = self.get_parsed_state(states, env_index, env_wrapper)
         adjacency_matrix = np.transpose(adjacency_matrix, [0, 1, 3, 2])
         batch_size = node_features.shape[0]
         num_nodes = node_features.shape[1]
@@ -198,8 +201,8 @@ class SymNet3(tf.keras.Model):
             
         if self.use_distance_mat:
             d = np.max(adjacency_matrix.astype("int32"), 0)
-            d = env_wrapper.get_distance_mat(d, instance)
-            mask = env_wrapper.get_distance_mask(instance)[None,:] # A 2D mask 
+            d = env_wrapper.get_distance_mat(d, env_index)
+            mask = env_wrapper.get_distance_mask(env_index)[None,:] # A 2D mask 
             mask = tf.repeat(mask, d.shape[0], axis=0)
             d = np.transpose(d, [1, 0, 2, 3])
             adjacency_matrix_fc = np.ones_like(d)
@@ -215,8 +218,8 @@ class SymNet3(tf.keras.Model):
                 res = se(node_features, adjacency_matrix[i], use_self_loops_in_all_adj, remove_attn)
                 se_embed_l.append(res)
         if return_attn_coef:
-            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, instance, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions), dist_attn_coef
+            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, env_index, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions), dist_attn_coef
         elif return_node_emb:
-            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, instance, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions), se_embed_l
+            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, env_index, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions), se_embed_l
         else:
-            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, instance, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions)
+            return self.policy_prediction_helper(batch_size, adjacency_matrix, env_wrapper, env_index, graph_features, action_details, se_embed_l, training=training, sample=sample, prune_actions=prune_actions)
