@@ -9,7 +9,7 @@ if [[ "${IS_WSL}" == "true" ]]; then
 else
 	ROOT=$HOME
 	GPU_FLAGS="--device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm -v /usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro --env LD_LIBRARY_PATH=/host-nvidia"
-	RUN_FLAG="--cdi-spec-dir=$HOME/.config/cdi"
+	#RUN_FLAG="--cdi-spec-dir=$HOME/.config/cdi"
 fi
 run_symnet_env() {
 	podman ${RUN_FLAG} run --rm \

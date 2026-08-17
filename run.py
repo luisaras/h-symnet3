@@ -73,6 +73,8 @@ if __name__ == "__main__":
 		ckpt = get_last_checkpoint(args.domain, args.model)
 		if ckpt >= 0:
 			file.write(f"\nexact_checkpoint = '{ckpt}'")
+		else:
+			file.write(f"\nexact_checkpoint = None")
 		if args.heuristics:
 			heuristics = ",".join([f"'{h}'" for h in args.heuristics])
 			print("Using heuristics: " + heuristics)
@@ -89,18 +91,20 @@ if __name__ == "__main__":
 			"-v", "/usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro",
 			"--env", "LD_LIBRARY_PATH=/host-nvidia"]
 		root = os.path.expanduser("~")
-		cmd += ["--cdi-spec-dir=" + root + "/.config/cdi"]
+#		root = get_env_var("HOME")
+#		cmd += ["--cdi-spec-dir=" + root + "/.config/cdi"]
 
-	cwd = os.path.abspath("multi_train/deep_plan/")
+	#cwd = os.path.abspath(".")
+	cwd = os.environ.get('PWD', os.getcwd())
 	cmd += ["run", "--rm",
 		"--env-host",
 		"--userns=keep-id",
 		"-v", root + ":" + root,
-		"-w", cwd]
+		"-w", os.path.join(cwd, "multi_train", "deep_plan")]
 	cmd += gpu_flags
 	cmd += ["symnet-env"]
 
-	config_path = os.path.abspath("temp_config.py")
+	config_path = os.path.join(cwd, "temp_config.py")
 	if args.epochs:
 		cmd += ["python3", "train.py", config_path]
 	else:

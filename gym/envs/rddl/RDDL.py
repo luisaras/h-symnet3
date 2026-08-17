@@ -24,6 +24,8 @@ class RDDLEnv(Env):
 		self.problem = domain + '_inst_mdp__' + instance
 		self.instance = instance
 
+		print("Creating env " + instance + "...")
+
 		# Instance Graph
 		self.instance_parser = InstanceParser(domain, instance)
 
@@ -44,7 +46,7 @@ class RDDLEnv(Env):
 			sys.stdout.flush()
 			os.dup2(_oldstdout_fno, 1)
 		
-		print("Created env: " + instance)
+		print("Created env " + self.problem)
 		
 	# Do not understand this yet. Almost all other sample environments have it, so we have it too.
 	def _seed(self, seed=None):
