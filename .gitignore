@@ -4,20 +4,26 @@ benchmarks/*/dbn
 benchmarks/*/parsed
 benchmarks/*/ppddl
 benchmarks/*/rddl/*_inst_mdp__*.rddl
+
+# Trained models
 symnet3_data.zip
-multi_train/deep_plan/models
+multi_train/deep_plan/models/*/*.py
+multi_train/deep_plan/models/*/checkpoints/*.data*
+multi_train/deep_plan/models/*/checkpoints/*.index
+multi_train/deep_plan/models/*/checkpoints/checkpoint
+
+# Temp files and logs
+temp_*/
 temp_config.py
+/plots/
 /.keras/
 .myscript.exclusivelock
 .combined
-temp_*/
-temp_config.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
 
 # Distribution / packaging
 .Python

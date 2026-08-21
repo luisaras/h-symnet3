@@ -59,8 +59,7 @@ def create_workers(NUM_WORKERS, network, instances, N_train_instances, train_sum
     return workers
 
 
-
-def evaluate(test_instance, num_episodes, process_index, output_dict):
+def evaluate(model_dir, ckpt_dir, test_instance, num_episodes, process_index, output_dict):
     is_human_eval = False
     get_random_policy = False
     plot_graph = False
@@ -69,7 +68,6 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
     tf.keras.backend.set_floatx('float64')
 
     envs_ = helper.make_envs([test_instance])
-    MODEL_DIR, CHECKPOINT_DIR, train_summary_path, val_summary_path = helper.get_test_model_dir()
 
     NUM_WORKERS = 1
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # Don't use GPU for inference
@@ -80,13 +78,12 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
 
     env_instance_wrapper_all = EnvInstanceWrapper(envs_)
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim, instances=[test_instance], env_instance_wrapper=env_instance_wrapper_all)
-    helper.add_network_args(args, envs_[0], MODEL_DIR, copy_config=False)
+    helper.add_network_args(args, envs_[0], model_dir, copy_config=False)
 
     model_factory = ModelFactory(args)
     network = model_factory.create_network(env_instance_wrapper_all)
     for e in envs_:
         e.close()
-
 
     # Create CheckpointManager
     # ckpt_parts = network.get_ckpt_parts()
@@ -94,7 +91,7 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
     ckpt_parts["network"] = network
     ckpt_parts["policynet_optim"] = policynet_optim
     ckpt = tf.train.Checkpoint(**ckpt_parts)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, os.path.join(my_config.trained_model_path, 'checkpoints'), 2000)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, ckpt_dir, 2000)
     model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
 
     workers = create_workers(NUM_WORKERS, network, [test_instance],
@@ -119,7 +116,7 @@ def evaluate(test_instance, num_episodes, process_index, output_dict):
     output_dict[process_index] = total_rewards
    
 
-def test():
+def test(model_dir, ckpt_dir):
     train_instances, N_train_instances, test_instances, N_test_instances, instances = helper.get_instance_names()
     print(test_instances)
     # Control variables
@@ -133,8 +130,7 @@ def test():
 
     with multiprocessing.Pool(my_config.num_threads) as pool:
         print(pool._processes)
-        results = pool.starmap(evaluate, [(inst, num_episodes, i, output_dict) for i, inst in enumerate(test_instances)])
-
+        results = pool.starmap(evaluate, [(model_dir, ckpt_dir, inst, num_episodes, i, output_dict) for i, inst in enumerate(test_instances)])
 
     print(output_dict, len(test_instances))
     for i in range(len(test_instances)):
@@ -142,7 +138,7 @@ def test():
 
     total_rewards = np.array(rewards_all_instances)
 
-    csv_file = os.path.abspath(os.path.join(my_config.trained_model_path, "results.csv"))
+    csv_file = os.path.abspath(os.path.join(model_dir, "results.csv"))
     
     with open(csv_file, 'a', newline='') as file:
         writer = csv.writer(file)
@@ -155,13 +151,12 @@ def test():
             writer.writerow([test_instances[i], np.mean(current_rewards), np.std(current_rewards) / (num_episodes ** 0.5),
                             current_rewards])
 
+
 if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None
     helper.load_config(config_file)
 
-    my_config.trained_model_path = os.path.join(my_config.model_dir, f'{my_config.domain}_{my_config.exp_description}')
     my_config.train_instance = ""
-
     if my_config.setting == "ippc":
         if my_config.domain == 'navigation':
             my_config.test_instance = ",".join([str(910+i) for i in range(40)])
@@ -172,21 +167,23 @@ if __name__ == '__main__':
         if my_config.domain == 'navigation':
             my_config.test_instance = ",".join([str(2200+i) for i in range(200)])
 	
+    model_dir, ckpt_dir, log_file = helper.get_model_dir()
+
     if not my_config.exact_checkpoint:
-        ptr = open(f'{my_config.trained_model_path}/meta_logging.csv')
-        ckpt = 1
-        best_ckpt, best_rew = 1, -1000000
-        for line in ptr.readlines()[2:]:
+        ckpts = helper.read_checkpoint_log(log_file)
+        best_rew = -1000000
+        for ckpt in ckpts:
+            toks = ckpt.split(",")
+            i = toks[0]
+            toks = toks[1:]
             if my_config.setting == "lr":
-                toks = line.split(",")[:100] # 100 val instances in lr
-            else:
-                toks = line.split(",")[:10] # 10 val instances in ippc
+                toks = toks[:100] # 100 val instances in lr
+            elif my_config.setting == "ippc":
+                toks = toks[:10] # 10 val instances in ippc
             rew = np.mean([float(x) for x in toks])
             if rew > best_rew:
                 best_rew = rew
-                best_ckpt = ckpt
-            ckpt += 1
-        my_config.exact_checkpoint = str(best_ckpt)
+                my_config.exact_checkpoint = i
 
     print("Exact checkpoint:", my_config.exact_checkpoint)
-    test()
+    test(model_dir, ckpt_dir)

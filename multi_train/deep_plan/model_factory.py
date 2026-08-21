@@ -36,7 +36,7 @@ class ModelFactory:
 	def load_ckpt(self, ckpt_num=None):
 		if self.ckpt_manager.latest_checkpoint:
 			if ckpt_num:
-				ckpt_path = self.ckpt_manager._checkpoint_prefix + "-" + ckpt_num
+				ckpt_path = f'{self.ckpt_manager._checkpoint_prefix}-{ckpt_num}'
 				print(("Loading model checkpoint: {}".format(ckpt_path)))
 				self.ckpt.restore(ckpt_path)
 			else:

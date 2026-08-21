@@ -9,6 +9,7 @@ import pickle
 import pdb
 import random
 import numpy as np
+from datetime import datetime
 
 import my_config
 from env_instance_wrapper import EnvInstanceWrapper
@@ -66,7 +67,7 @@ def train_step(network, x, y, env_index, env_wrapper, loss_fn, optimizer, grad_c
 
 # Trains for the given number of epochs.
 # Each epoch uses the entire dataset of each instance to perform updates.
-def train(MODEL_DIR, CHECKPOINT_DIR):
+def train(model_dir, ckpt_dir, log_file=None):
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
 
@@ -88,7 +89,7 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
     policynet_optim = tf.keras.optimizers.Adam(lr=my_config.lr)
 
     args = helper.create_modelfactory_args(policynet_optim=policynet_optim)
-    helper.add_network_args(args, envs_[0], MODEL_DIR)
+    helper.add_network_args(args, envs_[0], model_dir)
 
     model_factory = ModelFactory(args)
     env_wrapper = EnvInstanceWrapper(envs_[:N_train_instances])
@@ -120,7 +121,7 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
     ckpt_parts["network"] = network
     ckpt_parts["policynet_optim"] = policynet_optim
     ckpt = tf.train.Checkpoint(**ckpt_parts)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, CHECKPOINT_DIR, 2000)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, ckpt_dir, 2000)
     model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
 
     step = 0
@@ -196,7 +197,7 @@ def train(MODEL_DIR, CHECKPOINT_DIR):
         if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
             policy_monitor.copy_params()
             results, save_path = policy_monitor.eval_once(
-                #meta_logging=True, 
+                log_file=log_file, 
                 num_episodes=my_config.num_validation_episodes
             )
             val_reward = np.mean(results["total_reward_means"])
@@ -264,9 +265,9 @@ if __name__ == '__main__':
             my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2211])
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
 
-    MODEL_DIR, CHECKPOINT_DIR, _, _ = helper.get_model_dir(config_file)
+    model_dir, ckpt_dir, log_file = helper.get_model_dir(config_file, create=True)
 
     print("Domain: ", my_config.domain)
     print("Model dir: ", my_config.model_dir)
     print(my_config.train_instance, my_config.test_instance)
-    train(MODEL_DIR, CHECKPOINT_DIR)
+    train(model_dir, ckpt_dir, log_file)

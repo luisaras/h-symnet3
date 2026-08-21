@@ -25,7 +25,7 @@ class PolicyMonitor(object):
 		ModelFactory.copy_params(self.network_copy.trainable_variables, self.network.trainable_variables)
 
 	def eval_once(self, num_episodes=5, save_model=True, get_random=False, plot_graph=False, file_name=None,
-				verbose=False, test_envs=None, expert=None, meta_logging=False, get_attn_map=False, get_node_emb=False):
+				verbose=False, test_envs=None, expert=None, log_file=False, get_attn_map=False, get_node_emb=False):
 
 		verbose = False
 		start_time = time.time()
@@ -149,15 +149,14 @@ class PolicyMonitor(object):
 
 		total_time = time.time() - start_time
 
-
-		str_to_print = ",".join([str(mr) for mr in mean_total_rewards]) + "\n"
-		if meta_logging:
-			helper.write_content(helper.meta_logging_file, str_to_print)
+		rewards_str = ",".join([str(mr) for mr in mean_total_rewards]) + "\n"
+		if log_file is not None:
+			helper.write_content(log_file, f"{self.model_factory.checkpoint_number},{rewards_str}")
 
 		print("\n==============")
 		print("std_total_rewards = " + str(std_error_rewards))
 		print("==============")
-		print(str_to_print)
+		print(rewards_str)
 
 		results = dict(
 			total_time=total_time,

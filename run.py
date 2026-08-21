@@ -30,10 +30,10 @@ def parse_arguments():
 	return args
 
 def get_last_checkpoint(domain, exp_description):
-	model_suffix = f"{domain}_{exp_description}"
-	MODEL_DIR = os.path.join("multi_train", "deep_plan", my_config.model_dir, model_suffix, "checkpoints") 
+	model_name = f"{domain}_{exp_description}"
+	model_dir = os.path.join("multi_train", "deep_plan", my_config.model_dir, model_name, "checkpoints") 
 	last = -1
-	for file in Path(os.path.abspath(MODEL_DIR)).glob("ckpt-*.index"):
+	for file in Path(os.path.abspath(model_dir)).glob("ckpt-*.index"):
 		i = int(file.stem.replace("ckpt-", "").replace(".index", ""))
 		if i > last:
 			last = i

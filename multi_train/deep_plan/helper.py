@@ -85,36 +85,6 @@ def get_env_metadata(envs_):
 		num_adjacency_list.append(env_.get_num_adjacency_list())
 	return num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list
 
-def get_model_dir(config_file=None):
-	MODEL_DIR = my_config.model_dir
-	model_suffix = f"{my_config.domain}_{my_config.exp_description}"
-	MODEL_DIR = os.path.abspath(os.path.join(MODEL_DIR, model_suffix))
-	if not os.path.exists(MODEL_DIR):
-		os.makedirs(MODEL_DIR)
-	CHECKPOINT_DIR = os.path.join(MODEL_DIR, "checkpoints")
-	if not os.path.exists(CHECKPOINT_DIR):
-		os.makedirs(CHECKPOINT_DIR)
-	train_summary_path = os.path.join(MODEL_DIR, "train_summaries")
-	val_summary_path = os.path.join(MODEL_DIR, "val_summaries")
-
-	# init_meta_logging
-	shutil.copy(os.path.abspath("my_config.py"), MODEL_DIR)
-	if config_file:
-		shutil.copy(os.path.abspath(config_file), MODEL_DIR + "/config_mods.py")
-
-	shutil.copy(os.path.abspath("policy_monitor.py"), MODEL_DIR)
-	shutil.copy(os.path.abspath("networks/symnet3/symnet3.py"), MODEL_DIR)
-
-	os.makedirs(os.path.join(MODEL_DIR, "instances"), exist_ok=True)
-
-	str_to_print = str(datetime.now()) + "\n"
-	str_to_print += my_config.test_instance + "\n"
-	global meta_logging_file
-	meta_logging_file = os.path.join(MODEL_DIR, "meta_logging.csv")
-	write_content(meta_logging_file, str_to_print)
-
-	return MODEL_DIR, CHECKPOINT_DIR, train_summary_path, val_summary_path
-
 def failsafe():
 	print("================================================================")
 	print("domain = " + my_config.domain)
@@ -168,21 +138,42 @@ def write_content(file_path, content):
 	with open(file_path, 'a') as f:
 		f.write(content)
 
-# ===============================================================
-# For Testing
-# ===============================================================
+def backup_source_code(model_dir, config_file=None):
+    py_source = os.path.join(model_dir, "source_")
+    shutil.copy(os.path.abspath("my_config.py"), py_source + "my_config.py")
+    if config_file:
+        shutil.copy(os.path.abspath(config_file), py_source + "config_mods.py")
+    shutil.copy(os.path.abspath("policy_monitor.py"), py_source + "policy_monitor.py")
+    shutil.copy(os.path.abspath("networks/symnet3/symnet3.py"), py_source + "symnet3.py")
 
-def get_test_model_dir():
-	MODEL_DIR = my_config.model_dir
-	model_suffix = f"{my_config.domain}_{my_config.exp_description}"
-	MODEL_DIR = os.path.abspath(os.path.join(MODEL_DIR, model_suffix))
+def get_model_dir(config_file, create=False):
+	model_name = f"{my_config.domain}_{my_config.exp_description}"
+	model_dir = os.path.abspath(os.path.join(my_config.model_dir, model_name))
+	checkpoint_dir = os.path.join(model_dir, "checkpoints")
+	#train_summary_path = os.path.join(model_dir, "train_summaries")
+	#val_summary_path = os.path.join(model_dir, "val_summaries")
+	log_file = os.path.join(model_dir, "meta_logging.csv")
+	if create:
+		os.makedirs(model_dir, exist_ok=True)
+		os.makedirs(checkpoint_dir, exist_ok=True)
+		#backup_source_code(model_dir, config_file)
+		#os.makedirs(os.path.join(model_dir, "instances"), exist_ok=True)
+		log_header = "init: " + str(datetime.now()) + "\n"
+		log_header += my_config.test_instance + "\n"
+		write_content(log_file, log_header)
+	else:
+		if not os.path.exists(checkpoint_dir):
+			print("Incorrect checkpoint_dir :\n" + checkpoint_dir)
+			exit(-1)
+	return model_dir, checkpoint_dir, log_file
 
-	CHECKPOINT_DIR = os.path.abspath(os.path.join(my_config.trained_model_path, "checkpoints"))
-
-	if not os.path.exists(CHECKPOINT_DIR):
-		print("Incorrect CHECKPOINT_DIR :\n" + CHECKPOINT_DIR)
-		exit(-1)
-	train_summary_path = os.path.join(MODEL_DIR, "train_summaries")
-	val_summary_path = os.path.join(MODEL_DIR, "val_summaries")
-
-	return MODEL_DIR, CHECKPOINT_DIR, train_summary_path, val_summary_path
+def read_checkpoint_log(log_file):
+	with open(log_file, 'r') as f:
+		best_ckpt, best_rew = 1, -1000000
+		lines = f.readlines()
+		i = len(lines) - 1
+		if i < 2:
+			return [] # No checkpoints
+		while i > 0 and not lines[i].startswith("init"):
+			i -= 1
+		return lines[i+2:]

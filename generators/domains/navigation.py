@@ -7,8 +7,7 @@ representacoes com semantica identica:
 
   * RDDL  : {instance_name}.rddl               (non-fluents + instance,
             usa o dominio compartilhado navigation_mdp.rddl)
-  * PPDDL : {instance_name}_domain.pddl
-            {instance_name}_problem.pddl
+  * PPDDL : {instance_name}.pddl
 
 Os valores de P(x,y) (probabilidade de o robo desaparecer ao entrar na
 celula) sao sorteados UMA UNICA VEZ (na mesma ordem de chamadas de

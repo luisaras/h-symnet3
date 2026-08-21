@@ -20,7 +20,6 @@ declare -a domains=("navigation")
 prepare() {
 	case "$1" in
 		"generate")
-			set_instances $2 $3
 			generate_instances
 			;;
 		"parse")
@@ -78,11 +77,11 @@ generate_instances() {
 }
 
 preprocess_rddl() {
-	echo "Generate DBN and PPDDL files."
+	echo "Generate DBN files."
 	for d in "${domains[@]}"; do
 		for i in "${instances[@]}"
 		do
-			./prepare_instance.sh ${d} $i $1
+			./parse_instance.sh ${d} $i $1
 		done
 	done
 }

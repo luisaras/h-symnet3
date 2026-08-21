@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================
-# Usage example: ./prepare_instance.sh navigation 15 [skip]
+# Usage example: ./parse_instance.sh navigation 15 [skip]
 
 domain=$1
 instance=${domain}_inst_mdp__$2
