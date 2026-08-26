@@ -28,8 +28,8 @@ domain academic_advising_mdp {
     PREREQ(course, course) : { non-fluent, bool, default = false }; // First argument is a prereq of second argument
 
     // Nonfluents: course passing probabilities
-    PRIOR_PROB_PASS_NO_PREREQ(course) : { non-fluent, real, default = 0.8 }; // Probability of passing a course with no prereqs
-    PRIOR_PROB_PASS(course)           : { non-fluent, real, default = 0.2 }; // Probability of passing a course regardless of prereq status
+    PRIOR_PROB_PASS_NO_PREREQ(course) : { non-fluent, real, default = 0.95 }; // Probability of passing a course with no prereqs
+    PRIOR_PROB_PASS(course)           : { non-fluent, real, default = 0.05 }; // Probability of passing a course regardless of prereq status
     
     // Nonfluents: program requirements for graduation
     PROGRAM_REQUIREMENT(course) : { non-fluent, bool, default = false }; // Specifies whether course is program requirement 

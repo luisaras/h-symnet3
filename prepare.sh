@@ -10,12 +10,13 @@
 
 set -e
 
-domains_ipc="academic_advising crossing_traffic game_of_life navigation skill_teaching sysadmin tamarisk traffic wildfire"
+domains_ipc="academic_advising_ippc crossing_traffic game_of_life navigation skill_teaching sysadmin tamarisk traffic wildfire"
 domains_extra="recon triangle_tireworld elevators"
-domains_lr="academic_advising_chain academic_advising_prob pizza_delivery pizza_delivery_grid pizza_delivery_windy wall stochastic_navigation stochastic_wall corridor"
+domains_lr="academic_advising_chain academic_advising pizza_delivery pizza_delivery_grid pizza_delivery_windy wall stochastic_navigation stochastic_wall corridor"
 
-#declare -a domains=(${domains_ipc})
-declare -a domains=("navigation")
+
+domains_final="academic_advising"
+declare -a domains=(${domains_final})
 
 prepare() {
 	case "$1" in

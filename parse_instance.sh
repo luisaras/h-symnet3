@@ -13,7 +13,7 @@ temp_folder=${PWD}/temp_${instance}
 
 generate_dot() {
     echo "Generating .dot file for ${instance}..."
-    cat ${domain_rddl} ${instance_rddl} > ${temp_folder}/temp.rddl
+    cat ${instance_rddl} ${domain_rddl} > ${temp_folder}/temp.rddl
     pushd ${RDDLSIM_ROOT}
         ./run rddl.viz.RDDL2Graph "${temp_folder}/temp.rddl" ${instance}
         if [ -f "tmp_rddl_graphviz.dot" ]; then

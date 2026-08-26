@@ -50,3 +50,7 @@ class ModelFactory:
 		print("Model saved at: " + ckpt_loc)
 		return ckpt_loc
 
+	def get_ckpt_num(self):
+		ckpt = self.ckpt_manager.latest_checkpoint
+		return ckpt.replace(self.ckpt_manager._checkpoint_prefix + "-", "")
+

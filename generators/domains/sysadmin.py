@@ -281,7 +281,7 @@ if __name__ == "__main__":
         seed = args.pop(6)
         random.seed(int(seed))
     if len(args) != 6:
-        print("Wrong number of args. Usage: out-dir instance_name width height type horizon [seed]")
+        print("Wrong number of args. Usage: out-dir instance_name num_computers num_neighbors prob horizon [seed]")
         sys.exit(-1)
     out_dir = args[0]
     instance_name = args[1]

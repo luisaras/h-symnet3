@@ -84,13 +84,13 @@ def get_planner_wrapper(ppddl_file, instance_name, heuristics):
 
 
 def compute_heuristics(states, heuristic_names, planner_exts, index_map):
-	def convert(s):
-		return convert_prost_state(s, index_map)
 	results = dict()
 	for s in states:
 		if s in results:
 			continue
-		values = planner_exts.compute_heuristics(convert(s))
+		atoms = convert_prost_state(s, index_map)
+		print("Heuristics for state: " + str(atoms))
+		values = planner_exts.compute_heuristics(atoms)
 		heuristics = [name + "," + str(h) for name, h in zip(heuristic_names, values)]
 		results[s] = s + ":" + ",".join(heuristics) + "\n"
 	return results
@@ -113,8 +113,10 @@ if __name__ == '__main__':
 		ppddl_file = os.path.join(args.benchmark, args.domain, "ppddl", problem + ".ppddl")
 		data_file = os.path.join(args.dataset, "datasets", args.domain, args.instance + ".csv")
 		save_file = os.path.join(args.dataset, "heuristics", args.domain, args.instance + ".csv")
+		print("Loading " + ppddl_file + "...", flush=True)
 		planner_exts = ssipp_interface.PlannerExtensions([ppddl_file], problem, args.heuristics)
 		# RDDL parser
+		print("Parsing " + problem + "...", flush=True)
 		my_config.heuristics = args.heuristics
 		my_config.benchmark_folder = os.path.abspath(args.benchmark)
 		instance_parser.setup(my_config)
@@ -122,6 +124,7 @@ if __name__ == '__main__':
 		# States
 		df = pd.read_csv(data_file, delimiter=":", header=None, nrows=None)
 		# Compute heuristic
+		print("Computing heuristics for " + problem + "...", flush=True)
 		results = compute_heuristics(df[1], args.heuristics, planner_exts, index_map)	
 		# Write results
 		with open(save_file, "w") as f:

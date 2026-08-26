@@ -151,7 +151,7 @@ class PolicyMonitor(object):
 
 		rewards_str = ",".join([str(mr) for mr in mean_total_rewards]) + "\n"
 		if log_file is not None:
-			helper.write_content(log_file, f"{self.model_factory.checkpoint_number},{rewards_str}")
+			helper.write_content(log_file, f"{self.model_factory.get_ckpt_num()},{rewards_str}")
 
 		print("\n==============")
 		print("std_total_rewards = " + str(std_error_rewards))

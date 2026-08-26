@@ -167,7 +167,7 @@ if __name__ == '__main__':
         if my_config.domain == 'navigation':
             my_config.test_instance = ",".join([str(2200+i) for i in range(200)])
 	
-    model_dir, ckpt_dir, log_file = helper.get_model_dir()
+    model_dir, ckpt_dir, log_file = helper.get_model_dir(config_file)
 
     if not my_config.exact_checkpoint:
         ckpts = helper.read_checkpoint_log(log_file)

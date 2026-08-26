@@ -26,7 +26,7 @@ class PlannerExtensions(object):
 				 heuristics):
 		import ssipp
 		# SSiPP stuff
-		print(f"Initializing {instance_name} PPDDL problem...")
+		print(f"Initializing {instance_name} PPDDL problem...", flush=True)
 		for file in ppddl_files:
 			ssipp.readPDDLFile(file)
 		self.ssipp = ssipp
@@ -36,7 +36,7 @@ class PlannerExtensions(object):
 			sys.exit(1)
 		# this leaks for some reason; will store it here so I don't have to reconstruct
 		self.ssp = ssipp.SSPfromPPDDL(self.ssipp_problem)
-		print(f"PPDDL {instance_name} initialized.")
+		print(f"PPDDL {instance_name} initialized.", flush=True)
 
 		self.heuristics = [Evaluator(weak_ref_to(self), PlannerExtensions.heur_map[h]) for h in heuristics]
 		self._cache = dict()
@@ -55,12 +55,12 @@ class Evaluator:
 	# it just evaluating heuristics, or is it planning underneath? Resolve &
 	# rename!
 	def __init__(self, planner_exts, heuristic_name):
-		print(f"Initializing heuristic evaluator {heuristic_name}... ")
+		print(f"Initializing heuristic evaluator {heuristic_name}... ", flush=True)
 		self.ssipp_problem = planner_exts.ssipp_problem
 		self.heuristic = planner_exts.ssipp.createHeuristic(planner_exts.ssp, heuristic_name)
 		#self.evaluator = planner_exts.ssipp.SuccessorEvaluator(self.heuristic)
 		#self.cutter = Cutter(planner_exts)
-		print(heuristic_name + " initialized.")
+		print(heuristic_name + " initialized.", flush=True)
 
 	def eval_state(self, ssipp_state):
 		ssipp_state = self.ssipp_problem.get_intermediate_state(ssipp_state)
