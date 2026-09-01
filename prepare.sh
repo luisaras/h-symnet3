@@ -21,6 +21,7 @@ declare -a domains=(${domains_final})
 prepare() {
 	case "$1" in
 		"generate")
+			set_instances $2 $3
 			generate_instances
 			;;
 		"parse")
@@ -64,24 +65,24 @@ set_instances() {
 
 generate_instances() {
 	echo "Generating RDDL instances."
-	pushd generators
-		for d in "${domains[@]}"; do
-			python3 generate.py ${d} 1 -n 200 -d "train" -s "-1" -v
-			python3 generate.py ${d} 201 -n 10 -d "val" -s "-1" -v
-			python3 generate.py ${d} 211 -n 40 -d "test" -s "-1" -v
-			python3 generate.py ${d} 251 -d "debug1" -s "-1" -v
-			python3 generate.py ${d} 252 -d "debug2" -s "-1" -v
-			python3 generate.py ${d} 253 -d "debug3" -s "-1" -v
-			python3 generate.py ${d} 254 -d "debug4" -s "-1" -v
-		done
-	popd
+	for d in "${domains[@]}"; do
+		if [[ "${first_inst}" == "1" ]]; then
+			python3 -m benchmarks.generate ${d} 1 -n 200 -d "train" -s "-1" -v
+			python3 -m benchmarks.generate ${d} 201 -n 10 -d "val" -s "-1" -v
+			python3 -m benchmarks.generate ${d} 211 -n 40 -d "test" -s "-1" -v
+		else
+			python3 -m benchmarks.generate ${d} 251 -d "debug1" -s "-1" -v
+			python3 -m benchmarks.generate ${d} 252 -d "debug2" -s "-1" -v
+			python3 -m benchmarks.generate ${d} 253 -d "debug3" -s "-1" -v
+			python3 -m benchmarks.generate ${d} 254 -d "debug4" -s "-1" -v
+		fi
+	done
 }
 
 preprocess_rddl() {
 	echo "Generate DBN files."
 	for d in "${domains[@]}"; do
-		for i in "${instances[@]}"
-		do
+		for i in "${instances[@]}"; do
 			./parse_instance.sh ${d} $i $1
 		done
 	done
@@ -94,7 +95,7 @@ plan() {
 	fi
 	echo "Running prost for $d..."
 	printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
-		python3 prost/run_prost.py $d {} -n 1 -p {} -d benchmarks/$d/rddl -l data/logs/$d
+		python3 prost/run_prost.py $d -i {} {} -w 8 -p {} -d "benchmarks/{domain}/rddl" -l data/logs/{domain}
 	if [ ! -d "data/datasets/$d" ]; then
 		mkdir data/datasets/$d
 	fi
@@ -129,7 +130,7 @@ compute_heuristics() {
 	fi
 	echo "Computing heuristics for $d..."
 	printf '%s\n' "${instances[@]}" | xargs -I {} -P 8 \
-		python3 heuristics/compute_heuristics.py $d {}
+		python3 heuristics/compute_heuristics.py $d -i {} {}
 }
 
 prepare $1 $2 $3

@@ -42,6 +42,7 @@ vira uma acao grounded com a probabilidade ja embutida.
 """
 import os, sys, random
 
+rng = random.Random()
 
 # ---------------------------------------------------------------------
 # Sorteio de P(x,y) -- executado uma unica vez e compartilhado entre
@@ -58,15 +59,15 @@ def compute_P(w, h, t):
 	elif t == "default":
 		# rddlsim generator probabilities
 		safe_cols = range(1, w + 1)
-		danger_chance = lambda i: (0.01 + ((0.9 * (i - 1)) / (w - 1))) + 0.05 * random.uniform(0, 1)
+		danger_chance = lambda i: (0.01 + ((0.9 * (i - 1)) / (w - 1))) + 0.05 * rng.uniform(0, 1)
 		safe_chance = danger_chance
 	else:
 		# symnet probabilities
-		danger_chance = lambda i: random.uniform(0.88, 0.92)
-		safe_chance = lambda i: random.uniform(0.045, 0.055)
+		danger_chance = lambda i: rng.uniform(0.88, 0.92)
+		safe_chance = lambda i: rng.uniform(0.045, 0.055)
 		if t == "stochastic":
 			# random single safe column
-			safe_cols = [random.randint(1, w)]
+			safe_cols = [rng.randint(1, w)]
 		else:  # corridor
 			# first column as the safe column
 			safe_cols = [1]
@@ -264,7 +265,7 @@ def build_ppddl(instance_name, w, h, horizon, P):
 # ---------------------------------------------------------------------
 # Ponto de entrada compartilhado
 # ---------------------------------------------------------------------
-def generate_instance(instance_name, w, h, t, horizon):
+def build_instances(instance_name, w, h, t, horizon):
 	"""Sorteia P uma unica vez e gera as tres representacoes a partir
 	dele: RDDL, dominio PPDDL e problema PPDDL."""
 	P = compute_P(w, h, t)
@@ -272,24 +273,11 @@ def generate_instance(instance_name, w, h, t, horizon):
 	ppddl_domain, ppddl_problem = build_ppddl(instance_name, w, h, horizon, P)
 	return rddl, ppddl_domain, ppddl_problem
 
+def validate_args(dataset, args):
+    return True
 
-if __name__ == "__main__":
-	args = sys.argv[1:]
-	if len(args) == 7:
-		seed = args.pop(6)
-		random.seed(int(seed))
-	if len(args) != 6:
-		print("Wrong number of args. Usage: out-dir instance_name width height type horizon [seed]")
-		sys.exit(-1)
-
-	out_dir = args[0]
-	instance_name = args[1]
-	width = int(args[2])
-	height = int(args[3])
-	type = args[4]
-	horizon = int(args[5])
-
-	rddl, ppddl_domain, ppddl_problem = generate_instance(instance_name, width, height, type, horizon)
+def create_instances(out_dir, instance_name, width, height, type, horizon):
+	rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, width, height, type, horizon)
 
 	os.makedirs(out_dir, exist_ok=True)
 	rddl_file = os.path.join(out_dir, instance_name + ".rddl")
@@ -305,5 +293,16 @@ if __name__ == "__main__":
 		f.write(ppddl_domain + "\n")
 		f.write(ppddl_problem)
 
-	print("Generated file: " + rddl_file)
-	print("Generated file: " + ppddl_file)
+	print("Created file: " + rddl_file)
+	print("Created file: " + ppddl_file)
+
+
+if __name__ == "__main__":
+	args = sys.argv[1:]
+	if len(args) == 7:
+		seed = args.pop(6)
+		rng.seed(int(seed))
+	if len(args) != 6:
+		print("Wrong number of args. Usage: out-dir instance_name width height type horizon [seed]")
+		sys.exit(-1)
+	create_instances(*args):

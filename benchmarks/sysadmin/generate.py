@@ -31,6 +31,7 @@ import os
 import random
 import sys
 
+rng = random.Random()
 
 # --------------------------------------------------------------------------
 # Topology
@@ -42,8 +43,6 @@ def generate_topology(n, k):
 
     Guarantees weak connectivity via a base ring, then fills each
     computer's in-degree up to k (capped at n-1) with random extra edges.
-    Uses the global `random` module state (seed it yourself beforehand
-    if you want reproducibility).
     """
     computers = [f"computer{i + 1}" for i in range(n)]
 
@@ -60,7 +59,7 @@ def generate_topology(n, k):
         if needed <= 0:
             continue
         candidates = [x for x in computers if x != c and x not in incoming[c]]
-        random.shuffle(candidates)
+        rng.shuffle(candidates)
         for x in candidates[:needed]:
             incoming[c].add(x)
 
@@ -266,7 +265,7 @@ def build_ppddl(instance_name, computers, incoming, prob, penalty, horizon,
 # Instance generation + CLI
 # --------------------------------------------------------------------------
 
-def generate_instance(instance_name, n, k, p, horizon):
+def build_instances(instance_name, n, k, p, horizon):
     computers, incoming = generate_topology(n, k)
     penalty = 0.75
     discount = 1.0
@@ -274,22 +273,11 @@ def generate_instance(instance_name, n, k, p, horizon):
     ppddl_domain, ppddl_instance = build_ppddl(instance_name, computers, incoming, p, penalty, horizon, discount)
     return rddl, ppddl_domain, ppddl_instance
 
+def validate_args(dataset, args):
+    return True
 
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    if len(args) == 7:
-        seed = args.pop(6)
-        random.seed(int(seed))
-    if len(args) != 6:
-        print("Wrong number of args. Usage: out-dir instance_name num_computers num_neighbors prob horizon [seed]")
-        sys.exit(-1)
-    out_dir = args[0]
-    instance_name = args[1]
-    num_computers = int(args[2])
-    num_neighbors = int(args[3])
-    prob = float(args[4])
-    horizon = int(args[5])
-    rddl, ppddl_domain, ppddl_problem = generate_instance(instance_name, num_computers, num_neighbors, prob, horizon)
+def create_instances(out_dir, instance_name, num_computers, num_neighbors, reboot_prob, horizon):
+    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, num_computers, num_neighbors, reboot_prob, horizon)
     os.makedirs(out_dir, exist_ok=True)
     rddl_file = os.path.join(out_dir, instance_name + ".rddl")
     out_dir = out_dir.replace("rddl", "ppddl")
@@ -302,3 +290,14 @@ if __name__ == "__main__":
         f.write(ppddl_problem)
     print("Generated file: " + rddl_file)
     print("Generated file: " + ppddl_file)
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if len(args) == 7:
+        seed = args.pop(6)
+        rng.seed(int(seed))
+    if len(args) != 6:
+        print("Wrong number of args. Usage: out-dir instance_name num_computers num_neighbors prob horizon [seed]")
+        sys.exit(-1)
+    create_instances(*args)

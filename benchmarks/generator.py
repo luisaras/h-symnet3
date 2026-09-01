@@ -1,8 +1,8 @@
 #!/bin/python3
 # This file is for generating new domains using the generators
 
-import subprocess, os, sys, random, shutil, argparse
-import config
+import subprocess, os, sys, random, shutil, argparse, importlib
+from benchmarks import config
 
 def parse_arguments():
     formatter = lambda prog: argparse.ArgumentDefaultsHelpFormatter(
@@ -22,13 +22,27 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
+def get_rddlsim_root():
+    try:
+        return os.environ["RDDLSIM_ROOT"]
+    except KeyError:
+        err_msg = (
+            "Error: an environment variable RDDLSIM_ROOT pointing to "
+            "your RDDLSIM_ROOT installation must be setup."
+        )
+        print(err_msg)
+        sys.exit()
+
 class Generator():
-    def __init__(self, rddlsim_folder):
+    def __init__(self, rddlsim_folder=None, verbose=False):
         self.script_args = config.script_args
-        self.script_name = config.script_name
+        self.verbose = verbose
         
         self.folder = os.path.dirname(os.path.realpath(__file__))
-        self.rddlsim_folder = rddlsim_folder
+        if rddlsim_folder is None:
+            self.rddlsim_folder = get_rddlsim_root()
+        else:
+            self.rddlsim_folder = rddlsim_folder
         self.cp = '.commons-math3-3.6.1.jar'
         self.seed = None
 
@@ -42,20 +56,6 @@ class Generator():
             arg_str.append(f'{arg_type["param_name"]}: {args[i]}')
         return ','.join(arg_str)
 
-    def validate_args(self, domain, args):
-        # CONSTRAINTS
-        if domain == 'academic_advising_prob':
-            # FOR TRAINING
-            num_courses_per_level_idx = 3
-            num_levels_idx = 2
-            num_courses = int(args[num_courses_per_level_idx]) * int(args[num_levels_idx])
-            if num_courses >= 20:
-                print(f"Courses too high({num_courses})! Retrying...")
-                return False
-            else:
-                return True
-        return True
-
     def get_args(self, domain, dataset, output_dir, instance_name):
         args = []
         for arg_types in self.script_args[domain + "-" + dataset]:
@@ -64,44 +64,29 @@ class Generator():
             elif arg_types['param_name'] == 'instance-name':
                 args.append(instance_name)
             elif arg_types['type'] == int:
-                args.append(str(random.randint(arg_types['min'], arg_types['max'])))
+                args.append(random.randint(arg_types['min'], arg_types['max']))
             elif arg_types['type'] == float:
-                args.append(str(random.uniform(arg_types['min'], arg_types['max'])))
+                args.append(random.uniform(arg_types['min'], arg_types['max']))
             elif arg_types['type'] == str:
                 args.append(arg_types['value'])
         return args
 
-    def generate_instance(self, domain, dataset, instance, verbose=False):
+    def generate_instance(self, domain, dataset, instance):
         output_dir = self.get_output_dir(domain)
-        script_name = self.script_name[domain]
         instance_name = f'{domain}_inst_mdp__{instance}'
-        if ".py" in script_name:
-            command = ['python3', script_name]
-            directory = os.path.abspath(os.path.join(self.folder, "domains"))
-        else:
-            command = ['java', '-cp', self.cp, script_name]
-            directory = os.path.abspath(self.rddlsim_folder)
-
+        gen_module = importlib.import_module("benchmarks." + domain + ".generate")
         args = self.get_args(domain, dataset, output_dir, instance_name)
-        while not self.validate_args(domain, args):
-            args = self.get_args(domain)
-
+        while not gen_module.validate_args(dataset, args):
+            args = self.get_args(domain, dataset, output_dir, instance_name)
         if self.seed:
-            args.append(str(self.seed))
-        
-        out, err = subprocess.DEVNULL, subprocess.DEVNULL
-        if verbose:
-            out, err = None, None
-        
-        print(f"Generating RDDL with arguments [{self.args_string(domain, dataset, args)}]")
-        try:
-            subprocess.run(command + args, cwd=directory, stdout=out, stderr=err)
-        except subprocess.CalledProcessError as e:
-            print(f"Command failed with exit code {e.returncode}")
-            print(e.stderr)
+            gen_module.rng.seed(self.seed)
+            print(self.seed)
+        if self.verbose:
+            print(f"Generating RDDL with arguments [{self.args_string(domain, dataset, args)}]")
+        gen_module.create_instances(*args)
 
     def get_output_dir(self, domain):
-        return os.path.abspath(os.path.join(self.folder, "..", "benchmarks", domain, "rddl"))
+        return os.path.abspath(os.path.join(self.folder, domain, "rddl"))
 
     def check_instance_file(self, domain, instance):
         output_dir = self.get_output_dir(domain)
@@ -112,25 +97,19 @@ class Generator():
             return True
         return False
 
+    def generate_all(self, domain, dataset, i, n, seed=None, skip=False):
+        if seed and seed >= 0:
+            self.set_seed(seed)
+        for instance in range(i, i + n):
+            if seed == -1:
+                self.set_seed(instance)
+            instance = str(instance)
+            if skip and self.check_instance_file(domain, instance):
+                continue
+            self.generate_instance(domain, dataset, instance)
+
 
 if __name__ == '__main__':
-    try:
-        rddlsim_root = os.environ["RDDLSIM_ROOT"]
-    except KeyError:
-        err_msg = (
-            "Error: an environment variable RDDLSIM_ROOT pointing to "
-            "your RDDLSIM_ROOT installation must be setup."
-        )
-        print(err_msg)
-        sys.exit()
     args = parse_arguments()
-    generator = Generator(rddlsim_root)
-    if args.seed and args.seed >= 0:
-        generator.set_seed(args.seed)
-    for i in range(args.instance, args.instance + args.num_instances):
-        if args.seed == -1:
-            generator.set_seed(i)
-        instance = str(i)
-        if args.skip and generator.check_instance_file(args.domain, instance):
-            continue
-        generator.generate_instance(args.domain, args.dataset, instance, args.verbose)
+    generator = Generator(rddlsim_root, args.verbose)
+    generator.generate_all(args.domain, args.dataset, args.instance, args.num_instances, args.seed, args.skip)

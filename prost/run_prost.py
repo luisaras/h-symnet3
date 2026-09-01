@@ -1,5 +1,6 @@
 #!/bin/python3
-import sys, subprocess, os, argparse, shutil
+import sys, subprocess, os, argparse, shutil, copy
+from concurrent.futures import ProcessPoolExecutor
 from rddl_server import RDDLServer
 
 def parse_arguments():
@@ -11,23 +12,40 @@ def parse_arguments():
 		"by environment variable PROST_ROOT.",
 		formatter_class=formatter,
 	)
-	parser.add_argument("domain", help="domain name")
-	parser.add_argument("instance", help="name or number of first instance")
-	parser.add_argument("-n", "--num_instances", help="number of instances (if batch)",
+	parser.add_argument("domains", help="domain name(s)",
+		nargs="+")
+	parser.add_argument("-i", "--instances", help="first and last instances", 
+		nargs=2, type=int, default=[1, 254])
+	parser.add_argument("-w", "--workers", help="number of workers",
 		type=int,
-		default=None)
+		default=1)
 	parser.add_argument("-r", "--rounds", help="number of episodes/rounds",
 		action="store",
 		type=int,
 		default=30)
-	parser.add_argument("-d", "--directory", help="directory with rddl files",
-		default=None)
+	parser.add_argument("-d", "--dir_pattern", help="directory pattern with rddl files",
+		default=os.path.join("{prost_folder}", "testbed", "bechmarks", "{domain}"))
 	parser.add_argument("-l", "--log", help="log output file or directory.",
 		default=None)
 	parser.add_argument("-p", "--port", help="shift applied to the RDDLSim port",
 		type=int,
 		default=0)
+	parser.add_argument("-f", "--prost_folder", help="PROST root folder",
+		default=None)
+	parser.add_argument("--skip", help="skip instance if dataset already exists",
+		action="store_true")
 	args = parser.parse_args()
+	if args.prost_folder is None:
+		try:
+			args.prost_folder = os.environ["PROST_ROOT"]
+		except KeyError:
+			err_msg = (
+				"Error: an environment variable PROST_ROOT pointing to "
+				"your PROST installation must be setup."
+			)
+			print(err_msg)
+			sys.exit()
+	args.cwd = None
 	return args
 
 
@@ -44,9 +62,9 @@ class PROST:
 		try:
 			process = subprocess.Popen(cmd,
 				stdout=subprocess.PIPE,    # Capture stdout
-				#stderr=subprocess.STDOUT,  # Redirect stderr into stdout so everything is in one place
+				#stderr=subprocess.STDOUT, # Redirect stderr into stdout so everything is in one place
 				text=True,                 # Decode bytes to a string
-				#check=True                 # Raise error on crash
+				#check=True                # Raise error on crash
 				cwd=self.cwd,
 			)
 			output = ""
@@ -57,21 +75,26 @@ class PROST:
 			if log_file:
 				with open(log_file, 'w') as f:
 					f.write(output)
+				print("Salved PROST log: " + log_file)
 			return self.get_results(output)
 		except subprocess.CalledProcessError as e:
 			print(f"Command failed with exit code {e.returncode}")
 			print(e.stdout)
 			return None
 
-	def run_batch(self, domain_name, instances, log_folder=None):
+	def run_batch(self, domain_name, instances, log_folder=None, skip=False):
+		# Run several instances, sequentially, in the same server
 		rewards = {}
 		times = {}
 		for i in instances:
+			instance = f"{domain_name}_inst_mdp__{i}"
 			if log_folder:
-				log_file = f'{log_folder}/{i}.result'
+				log_file = os.path.join(log_folder.format(domain=domain_name), f'{i}.result')
 			else:
 				log_file = None
-			instance = f"{domain_name}_inst_mdp__{i}"
+			if skip and os.path.exists(log_file):
+				print("Skipped instance " + instance)
+				continue
 			reward, time = self.run(instance, log_file)
 			rewards[i] = reward
 			times[i] = time
@@ -88,52 +111,75 @@ class PROST:
 		if reward and time:
 			return reward, time
 		else:
-			print("Error trying to parsing output.")
+			print("Error trying to parse output.")
 			return None, None
 
-if __name__ == "__main__":
-	# Check if the environment variable PROST_ROOT exists
-	try:
-		prost_root = os.environ["PROST_ROOT"]
-	except KeyError:
-		err_msg = (
-			"Error: an environment variable PROST_ROOT pointing to "
-			"your PROST installation must be setup."
-		)
-		print(err_msg)
-		sys.exit()
 
-	args = parse_arguments()
+def check_files(domain, instances, log): # True if they all exist
+	log = os.path.join(log.format(domain=domain))
+	for i in instances:
+		file = os.path.join(log, f"{i}.result")
+		if not os.path.exists(file):
+			return False
+	return True
 
-	if args.directory:
-		# Custom rddl folder
-		domain_folder = args.directory
-	if not domain_folder:
-		# {domain} folder within prost testbed benchmark
-		domain_folder = os.path.join(prost_root, "testbed", "bechmarks", args.domain)
 
-	cwd = None
-	if args.num_instances == 1:
-		# Single instance: create temp folder
-		instance = f'{args.domain}_inst_mdp__{args.instance}'
-		domain = f'{args.domain}_mdp'
-		cwd = "temp_" + instance
-		os.makedirs(cwd, exist_ok=True)
-		shutil.copy(os.path.join(domain_folder, instance + ".rddl"), cwd)
-		shutil.copy(os.path.join(domain_folder, domain + ".rddl"), cwd)
-		domain_folder = cwd
+def set_domain(args, d):
+	args.domain = d
+	args.domain_folder = args.dir_pattern.format(domain=d, prost_folder=args.prost_folder)
+	os.makedirs(args.log.format(domain=args.domain), exist_ok=True)
 
-	server = RDDLServer(prost_root, domain_folder, args.rounds, args.port)
-	prost = PROST(prost_root, args.port, cwd)
+
+def run_new_server(args, cwd=None):
+	if args.skip and check_files(args.domain, args.instances):
+		return
+	print(f"Running server in {args.domain_folder}, port {args.port}")
+	server = RDDLServer(args.prost_folder, args.domain_folder, args.rounds, args.port)
+	prost = PROST(args.prost_folder, args.port, cwd)
 	with server:
-		if args.num_instances:
+		if len(args.instances) > 1 or args.workers > 1:
 			# Run num_instances instances
-			args.instance = int(args.instance)
-			instances = range(args.instance, args.instance + args.num_instances)
-			print(prost.run_batch(args.domain, instances, args.log))
+			print(prost.run_batch(args.domain, args.instances, args.log, args.skip))
 		else:
 			# Run single instance of given name
-			print(prost.run(args.instance, args.log))
+			print(prost.run(args.instances[0], args.log))
 
-	if cwd:
-		shutil.rmtree(cwd)
+
+def run_worker(args_i):
+	# Create temp folder for instance
+	instance = f'{args_i.domain}_inst_mdp__{args_i.instances[0]}'
+	domain = f'{args_i.domain}_mdp'
+	folder = "temp_" + instance
+	os.makedirs(folder, exist_ok=True)
+	shutil.copy(os.path.join(args_i.domain_folder, instance + ".rddl"), folder)
+	shutil.copy(os.path.join(args_i.domain_folder, domain + ".rddl"), folder)
+	args_i.domain_folder = folder
+	args_i.port += args_i.instances[0]
+	print("Planning for instance " + instance)
+	run_new_server(args_i, folder)
+	shutil.rmtree(folder)
+
+
+if __name__ == "__main__":
+	args = parse_arguments()
+	args.instances = range(args.instances[0], args.instances[1]+1)
+	if args.workers == 1 and (len(args.domains) > 1 or len(args.instances) > 1): # Sequential batch
+		print("Running PROST sequentially...")
+		for d in args.domains:
+			set_domain(args, d)
+			run_new_server(args)
+	else:
+		print("Running PROST in parallel...")
+		worker_args = []
+		for d in args.domains:
+			set_domain(args, d)
+			for i in args.instances:
+				args_i = copy.copy(args)
+				args_i.instances = [i]
+				worker_args.append(args_i)
+		print(worker_args)
+		if len(worker_args) > 1:
+			with ProcessPoolExecutor(max_workers=args.workers) as executor:
+				executor.map(run_worker, worker_args)
+		else: # Only one instance
+			run_worker(worker_args[0])

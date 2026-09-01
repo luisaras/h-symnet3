@@ -5,6 +5,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 1, 'max': 5},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 1, 'max': 5},
         {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 5},
+        {'param_name': 'type', 'type': str, 'value': 'ippc'},
         {'param_name': 'horizon', 'type': int, 'min': 40, 'max': 40}
     ],
     'academic_advising_ippc-val': [ 
@@ -13,6 +14,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 5, 'max': 8},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 5, 'max': 8},
         {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 5},
+        {'param_name': 'type', 'type': str, 'value': 'ippc'},
         {'param_name': 'horizon', 'type': int, 'min': 40, 'max': 40}
     ],
     'academic_advising_ippc-test': [ 
@@ -21,6 +23,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 10, 'max': 12},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 6, 'max': 10},
         {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 5},
+        {'param_name': 'type', 'type': str, 'value': 'ippc'},
         {'param_name': 'horizon', 'type': int, 'min': 60, 'max': 60},
     ],
     'academic_advising_chain-train': [ 
@@ -28,8 +31,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 2, 'max': 8},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 2, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'chain'},
         {'param_name': 'horizon', 'type': int, 'min': 40, 'max': 40}
     ],
     'academic_advising_chain-val': [ 
@@ -37,8 +40,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 7, 'max': 12},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 3, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'chain'},
         {'param_name': 'horizon', 'type': int, 'min': 100, 'max': 100}
     ],
     'academic_advising_chain-test': [ 
@@ -46,8 +49,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 12, 'max': 20},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 5, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'chain'},
         {'param_name': 'horizon', 'type': int, 'min': 100, 'max': 100}
     ],
     'academic_advising-train': [
@@ -55,8 +58,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 2, 'max': 8},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 2, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 40, 'max': 40}
     ],
     'academic_advising-val': [
@@ -64,8 +67,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 7, 'max': 12},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 3, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 100, 'max': 100}
     ],
     'academic_advising-test': [
@@ -73,8 +76,8 @@ script_args = {
         {'param_name': 'instance-name', 'type': str},
         {'param_name': 'num_levels', 'type': int, 'min': 12, 'max': 20},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 5, 'max': 8},
-        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
-        {'param_name': 'num_reqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 4},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 200, 'max': 200}
     ],
     'academic_advising-debug1': [ 
@@ -83,6 +86,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 1, 'max': 1},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 1, 'max': 1},
         {'param_name': 'num_prereqs', 'type': int, 'min': 0, 'max': 0},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10}
     ],
     'academic_advising-debug2': [ 
@@ -91,6 +95,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 2, 'max': 2},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 1, 'max': 1},
         {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10}
     ],
     'academic_advising-debug3': [ 
@@ -99,6 +104,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 2, 'max': 2},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 2, 'max': 2},
         {'param_name': 'num_prereqs', 'type': int, 'min': 1, 'max': 1},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10}
     ],
     'academic_advising-debug4': [ 
@@ -107,6 +113,7 @@ script_args = {
         {'param_name': 'num_levels', 'type': int, 'min': 2, 'max': 2},
         {'param_name': 'num_courses_per_level', 'type': int, 'min': 2, 'max': 2},
         {'param_name': 'num_prereqs', 'type': int, 'min': 2, 'max': 2},
+        {'param_name': 'type', 'type': str, 'value': 'prob'},
         {'param_name': 'horizon', 'type': int, 'min': 10, 'max': 10}
     ],
     'pizza_delivery-train': [ 
@@ -703,28 +710,4 @@ script_args = {
         {'param_name': 'horizon', 'type': int, 'min': 40, 'max': 40},
         {'param_name': 'discount', 'type': float, 'min': 1.0, 'max': 1.0},
     ]
-}
-
-script_name = {
-    'academic_advising_ippc': 'academic_advising.py',
-    'crossing_traffic': 'CrossingTrafficMDPGen',
-    'elevators': 'ElevatorMDPGen',
-    'game_of_life': 'GameOfLifeMDPGen',
-    'navigation': 'navigation.py',
-    'recon': 'ReconMDPGen',
-    'wall': 'WallMDPGen.py',
-    'skill_teaching': 'SkillTeachingMDPGen',
-    'sysadmin': 'sysadmin.py',
-    'tamarisk': 'TamariskMDPGen',
-    'traffic': 'TrafficMDPGen',
-    'triangle_tireworld': 'TriangleTireworldMDPGen',
-    'wildfire': 'WildfireMDPGen',
-    'academic_advising_chain': 'academic_advising.py',
-    'academic_advising': 'academic_advising.py',
-    'pizza_delivery': 'PizzaDeliveryMDPGen.py',
-    'pizza_delivery_grid': 'PizzaDeliveryGridMDPGen.py',
-    'pizza_delivery_windy': 'PizzaDeliveryWindyMDPGen.py',
-    'stochastic_navigation': 'StochasticNavigationMDPGen.py',
-    'stochastic_wall': 'StochasticWallMDPGen.py',
-    'corridor': 'CorridorMDPGen.py'
 }

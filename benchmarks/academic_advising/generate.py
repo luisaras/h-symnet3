@@ -50,7 +50,7 @@ import random
 
 
 PROGRAM_INCOMPLETE_PENALTY = 5.0  # matches the RDDL domain's default magnitude
-
+rng = random.Random()
 
 def course_name(level, idx):
     return f"c{idx}l{level}"
@@ -64,7 +64,7 @@ def weighted_sample_without_replacement(candidates, weights, k):
     chosen = []
     for _ in range(k):
         total = sum(w for _, w in pool)
-        r = random.uniform(0, total)
+        r = rng.uniform(0, total)
         upto = 0.0
         for i, (c, w) in enumerate(pool):
             upto += w
@@ -96,12 +96,12 @@ def build_courses_and_prereqs(num_levels, num_courses, num_prereqs):
         candidates = [c for l in range(1, lvl) for c in courses_by_level[l]]
         weights = [level_of[c] ** 2 for c in candidates]
         for c in courses_by_level[lvl]:
-            k = random.randint(1, max(1, num_prereqs))
+            k = rng.randint(1, max(1, num_prereqs))
             prereqs[c] = weighted_sample_without_replacement(candidates, weights, k)
 
     # Program requirements: sampled the same weighted way, from all courses.
     weights_all = [level_of[c] ** 2 for c in all_courses]
-    k = random.randint(1, max(1, num_prereqs))
+    k = rng.randint(1, max(1, num_prereqs))
     program_reqs = weighted_sample_without_replacement(all_courses, weights_all, k)
 
     return all_courses, prereqs, program_reqs
@@ -253,7 +253,10 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, horizon):
     return domain_str, problem_str
 
 
-def generate_instance(instance_name, num_levels, num_courses, num_prereqs, horizon):
+# --------------------------------------------------------------------------
+# Instance generation + CLI
+# --------------------------------------------------------------------------
+def build_instances(instance_name, num_levels, num_courses, num_prereqs, horizon):
     courses, prereqs, program_reqs = build_courses_and_prereqs(
         num_levels, num_courses, num_prereqs
     )
@@ -263,32 +266,49 @@ def generate_instance(instance_name, num_levels, num_courses, num_prereqs, horiz
     )
     return rddl, ppddl_domain, ppddl_problem
 
+def validate_args(dataset, args):
+    if dataset == 'train':
+        type_idx = 5
+        if args[type_idx] != "ippc":
+            return True
+        num_levels_idx = 2
+        num_courses_per_level_idx = 3
+        num_courses = int(args[num_courses_per_level_idx]) * int(args[num_levels_idx])
+        if num_courses >= 20:
+            print(f"Courses too high({num_courses})! Retrying...")
+            return False
+        else:
+            return True
+    return True
+
+def create_instances(out_dir, instance_name, num_levels, num_courses, num_prereqs, type, horizon):
+    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, num_levels, num_courses, num_prereqs, horizon)
+
+    os.makedirs(out_dir, exist_ok=True)
+    rddl_file = os.path.join(out_dir, instance_name + ".rddl")
+
+    out_dir = out_dir.replace("rddl", "ppddl")
+    os.makedirs(out_dir, exist_ok=True)
+    ppddl_file = os.path.join(out_dir, instance_name + ".ppddl")
+
+
+    with open(rddl_file, "w") as f:
+        f.write(rddl)
+    with open(ppddl_file, "w") as f:
+        f.write(ppddl_domain + "\n")
+        f.write(ppddl_problem)
+
+    print("Created file: " + rddl_file)
+    print("Created file: " + ppddl_file)
+
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     n_args = 6
     if len(args) == n_args + 1:
         seed = args.pop(n_args)
-        random.seed(int(seed))
+        rng.seed(int(seed))
     if len(args) != n_args:
-        print("Wrong number of args. Usage: out-dir instance_name num_levels num_courses num_prereqs horizon [seed]")
+        print("Wrong number of args. Usage: out-dir instance_name num_levels num_courses num_prereqs type horizon [seed]")
         sys.exit(-1)
-    out_dir = args[0]
-    instance_name = args[1]  # Name of both PPDDL and RDDL instances.
-    num_levels = int(args[2])  # Number of levels.
-    num_courses = int(args[3])  # Number of courses per level.
-    num_prereqs = int(args[4])  # Max number of prereqs. The mimimum is 1 (except for first level).
-    horizon = int(args[5])
-    rddl, ppddl_domain, ppddl_problem = generate_instance(instance_name, num_levels, num_courses, num_prereqs, horizon)
-    os.makedirs(out_dir, exist_ok=True)
-    rddl_file = os.path.join(out_dir, instance_name + ".rddl")
-    out_dir = out_dir.replace("rddl", "ppddl")
-    os.makedirs(out_dir, exist_ok=True)
-    ppddl_file = os.path.join(out_dir, instance_name + ".ppddl")
-    with open(rddl_file, "w") as f:
-        f.write(rddl)
-    with open(ppddl_file, "w") as f:
-        f.write(ppddl_domain + "\n")
-        f.write(ppddl_problem)
-    print("Generated file: " + rddl_file)
-    print("Generated file: " + ppddl_file)
+    create_instances(*args)

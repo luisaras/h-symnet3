@@ -27,6 +27,19 @@ import weakref
 from rpyc.utils.server import OneShotServer
 
 from heuristics.ssipp_interface import PlannerExtensions
+import builtins
+import os
+try:
+    import kernprof
+except ImportError:
+    kernprof = None
+
+
+def _has_profile():
+    """Check whether we have kernprof & kernprof has given us global 'profile'
+    object."""
+    return kernprof is not None and hasattr(builtins, 'profile')
+
 
 class ProblemServiceConfig(object):
     def __init__(
@@ -56,12 +69,10 @@ def make_problem_service(config):
         def exposed_initialise(self):
             assert not self.initialised, "Can't double-init"
             self.p = PlannerExtensions(config.pddl_files, config.init_problem_name, config.heuristics)
-            self.domain_meta = self.p.domain_meta
-            self.problem_meta = self.p.problem_meta
             self.initialised = True
 
-        def exposed_get_planner_exts(self):
-            return self.p
+        def exposed_compute_heuristics(self, atoms):
+            return self.p.compute_heuristics(atoms)
 
         def on_connect(self, conn):
             # we let the initialiser run later, so that it can execute
@@ -84,11 +95,9 @@ def parent_death_pact(signal=signal.SIGINT):
         raise Exception("prctl() returned nonzero retcode %d" % retcode)
 
 def start_server(service_args, socket_path):
-    if service_args.random_seed is not None:
-        set_random_seeds(service_args.random_seed)
     # avoid import cycle
     parent_death_pact(signal=signal.SIGKILL)
-    new_service = make_problem_service(service_args, set_proc_title=True)
+    new_service = make_problem_service(service_args)
     server = OneShotServer(new_service, socket_path=socket_path)
     print('Child process starting OneShotServer %s' % server)
     try:
@@ -96,6 +105,22 @@ def start_server(service_args, socket_path):
     finally:
         # save kernprof profile for this subprocess if we can
         try_save_profile()
+
+def try_save_profile():
+    """If there's a profiler, this tries to save a profile with appropriate
+    filename. Relies on arguments being passed correctly."""
+    # avoids flake8 warnings
+    if _has_profile():
+        options = _kernprof_options()
+        pid = os.getpid()
+        if options.outfile is not None:
+            # append PID to destination name and save that
+            real_dest = options.outfile + '.%d' % pid
+            print("Subprocess %d saving stats to '%s'" % (pid, real_dest))
+            builtins.profile.dump_stats(real_dest)
+        if options.view is not None:
+            print("Profiler stats for subprocess %d:" % pid)
+            builtins.profile.print_stats()
 
 
 def to_local(obj):
@@ -217,6 +242,6 @@ class ProblemServer(object):
 
 def make_planner_server(ppddl_file, instance_name, heuristics):
     config = ProblemServiceConfig([ppddl_file], instance_name, heuristics)
-    problem_server = ProblemServer(service_config)
-    problem_server.service.initialise()
-    return server.service.get_planner_exts()
+    server = ProblemServer(config)
+    server.service.initialise()
+    return server

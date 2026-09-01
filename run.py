@@ -45,6 +45,43 @@ def get_env_var(name):
 	except KeyError:
 		return ""
 
+def symnet3_env_cmd(cwd="."):
+	cmd = ["podman"]
+	if get_env_var("IS_WSL") == "true":
+		gpu_flags=["--device", "\"nvidia.com/gpu=all\""]
+		root = "/mnt"
+	else:
+		gpu_flags=["--device", "/dev/nvidia0",
+			"--device", "/dev/nvidiactl",
+			"--device", "/dev/nvidia-uvm",
+			"-v", "/usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro",
+			"--env", "LD_LIBRARY_PATH=/host-nvidia"]
+		root = os.path.expanduser("~")
+#		root = get_env_var("HOME")
+#		cmd += ["--cdi-spec-dir=" + root + "/.config/cdi"]
+	#cwd = os.path.abspath(".")
+	cwd = os.path.abspath(os.path.join(os.environ.get('PWD', os.getcwd()), cwd))
+	cmd += ["run", "--rm",
+		"--env-host",
+		"--userns=keep-id",
+		"-v", root + ":" + root,
+		"-w", cwd]
+	cmd += gpu_flags
+	cmd += ["symnet-env"]
+	return cmd
+
+
+def run_symnet3_env(cmd, cwd="."):
+	cmd = symnet3_env_cmd(cwd) + cmd
+	print(" ".join(cmd))
+	try:
+		process = subprocess.run(cmd)
+		#print(process.stdout)
+	except subprocess.CalledProcessError as e:
+		print(f"Command failed with exit code {e.returncode}")
+		print(e.stderr)
+
+
 if __name__ == "__main__":
 	args = parse_arguments()
 	if args.quick:
@@ -80,39 +117,10 @@ if __name__ == "__main__":
 			print("Using heuristics: " + heuristics)
 			file.write(f"\nheuristics = [{heuristics}]")
 
-	cmd = ["podman"]
-	if get_env_var("IS_WSL") == "true":
-		gpu_flags=["--device", "\"nvidia.com/gpu=all\""]
-		root = "/mnt"
-	else:
-		gpu_flags=["--device", "/dev/nvidia0",
-			"--device", "/dev/nvidiactl",
-			"--device", "/dev/nvidia-uvm",
-			"-v", "/usr/lib/x86_64-linux-gnu/nvidia:/host-nvidia:ro",
-			"--env", "LD_LIBRARY_PATH=/host-nvidia"]
-		root = os.path.expanduser("~")
-#		root = get_env_var("HOME")
-#		cmd += ["--cdi-spec-dir=" + root + "/.config/cdi"]
-
-	#cwd = os.path.abspath(".")
-	cwd = os.environ.get('PWD', os.getcwd())
-	cmd += ["run", "--rm",
-		"--env-host",
-		"--userns=keep-id",
-		"-v", root + ":" + root,
-		"-w", os.path.join(cwd, "multi_train", "deep_plan")]
-	cmd += gpu_flags
-	cmd += ["symnet-env"]
-
-	config_path = os.path.join(cwd, "temp_config.py")
+	py_dir = os.path.join("multi_train", "deep_plan")
+	config_path = os.path.join("..", "..", "temp_config.py")
 	if args.epochs:
-		cmd += ["python3", "train.py", config_path]
+		cmd = ["python3", "train.py", config_path]
 	else:
-		cmd += ["python3", "test.py", config_path]
-	print(" ".join(cmd))
-	try:
-		process = subprocess.run(cmd)
-		#print(process.stdout)
-	except subprocess.CalledProcessError as e:
-		print(f"Command failed with exit code {e.returncode}")
-		print(e.stderr)
+		cmd = ["python3", "test.py", config_path]
+	run_symnet3_env(cmd, py_dir)

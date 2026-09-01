@@ -1,4 +1,5 @@
-import sys, os, argparse
+import sys, os, argparse, copy
+from concurrent.futures import ProcessPoolExecutor
 import pandas as pd
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -6,7 +7,7 @@ root_path = os.path.abspath(os.path.join(curr_dir_path, ".."))
 if root_path not in sys.path:
 	sys.path = [root_path] + sys.path
 
-from heuristics import ssipp_interface
+from heuristics import ssipp_interface, problem_server
 from multi_train.deep_plan import my_config
 from gym.envs.rddl import instance_parser
 
@@ -14,10 +15,10 @@ from gym.envs.rddl import instance_parser
 def parse_arguments():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("domain", help="name of the domain, e.g. navigation")
-	parser.add_argument("instance", help="number of instance, e.g. 1")
-	parser.add_argument("-b", "--benchmark", help="path of prost logs",
+	parser.add_argument("instance", help="instance number")
+	parser.add_argument("-b", "--benchmark", help="folder with domains",
 		default="benchmarks")
-	parser.add_argument("-l", "--dataset", help="path of prost logs",
+	parser.add_argument("-l", "--dataset", help="folder with prost logs",
 		default="data")
 	parser.add_argument("-f", "--heuristics", help="heuristic features (lmc, hadd, hmax)",
 		nargs="*", default=["lmc"])
@@ -46,8 +47,6 @@ def convert_prost_state(state, var_names):
 class PlannerWrapper:
 	def __init__(self, server=None):
 		self.server = server
-		if server:
-			self.planner_exts = server.service.get_planner_exts()
 		self.dataset = dict()
 
 	def add_cache(self, file):
@@ -58,16 +57,16 @@ class PlannerWrapper:
 				h = dict()
 				for name, v in zip(values, values[1:]):
 					h[name] = float(v)
-				state_str = convert_prost_state(row[0].strip(), self.instance_parser.num_to_state)
-				self.dataset[state_str] = [h[name] for name in self.instance_parser.heuristic_names]
+				atoms = convert_prost_state(row[0].strip(), self.instance_parser.num_to_state)
+				self.dataset[atoms] = [h[name] for name in self.instance_parser.heuristic_names]
 		self.null_heuristics = [0] * self.instance_parser.get_num_heuristics()
 
 	def compute_heuristics(self, state):
-		state_str = convert_symnet_state(state, self.instance_parser.num_to_state)
-		if state_str in self.dataset:
-			return self.dataset[state_str]
+		atoms = convert_symnet_state(state, self.instance_parser.num_to_state)
+		if atoms in self.dataset:
+			return self.dataset[atoms]
 		elif self.server:
-			return self.planner_exts.compute_heuristics(state_str)
+			return self.server.service.compute_heuristics(atoms)
 		else:
 			return self.null_heuristics
 
@@ -77,8 +76,8 @@ def get_planner_wrapper(ppddl_file, instance_name, heuristics):
 	if instance_name in wrappers:
 		return wrappers[instance_name]
 	else:
-		problem_server = None#make_planner_server(ppddl_file, instance_name, heuristics)
-		wrapper = PlannerWrapper(problem_server)
+		server = problem_server.make_planner_server(ppddl_file, instance_name, heuristics)
+		wrapper = PlannerWrapper(server)
 		wrappers[instance_name] = wrapper
 		return wrapper
 
@@ -108,19 +107,22 @@ if __name__ == '__main__':
 		# Write results
 		print(results)
 	else:
-		# Files
 		problem = f'{args.domain}_inst_mdp__{args.instance}'
 		ppddl_file = os.path.join(args.benchmark, args.domain, "ppddl", problem + ".ppddl")
 		data_file = os.path.join(args.dataset, "datasets", args.domain, args.instance + ".csv")
 		save_file = os.path.join(args.dataset, "heuristics", args.domain, args.instance + ".csv")
 		print("Loading " + ppddl_file + "...", flush=True)
-		planner_exts = ssipp_interface.PlannerExtensions([ppddl_file], problem, args.heuristics)
+		
+		#planner_exts = ssipp_interface.PlannerExtensions([ppddl_file], problem, args.heuristics)
+		planner_exts = get_planner_wrapper(ppddl_file, problem, args.heuristics).server.service
+
 		# RDDL parser
 		print("Parsing " + problem + "...", flush=True)
 		my_config.heuristics = args.heuristics
 		my_config.benchmark_folder = os.path.abspath(args.benchmark)
 		instance_parser.setup(my_config)
 		index_map = instance_parser.InstanceParser(args.domain, args.instance).num_to_state
+
 		# States
 		df = pd.read_csv(data_file, delimiter=":", header=None, nrows=None)
 		# Compute heuristic

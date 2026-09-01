@@ -1,13 +1,9 @@
 import os, argparse
 
-def create_dataset(domain, start_instance, num_instances, prost_log, save_folder):
+def create_dataset(domain, first_instance, last_instance, prost_log, save_folder):
 	episodes = []
 	transitions = []
-	if num_instances == 1:
-		instances = [start_instance]
-	else:
-		start_instance = int(start_instance)
-		instances = [str(i) for i in range(start_instance, start_instance + num_instances)]
+	instances = [str(i) for i in range(first_instance, last_instance+1)]
 	for i in instances:
 		episodes = []
 		f = open(os.path.join(prost_log, i+".result"))
@@ -47,10 +43,8 @@ def create_dataset(domain, start_instance, num_instances, prost_log, save_folder
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument("domain", help="name of the domain")
-	parser.add_argument("instance", help="number of the first instance")
-	parser.add_argument("-n", "--num_instances", help="number of instances (if batch)",
-		type=int,
-		default=None)
+	parser.add_argument("-i", "--ins", help="first and last instances", 
+		nargs=2, type=int, default=[1, 254])
 	parser.add_argument("-l", "--prost_log", default=".",
 		help="path of prost logs")
 	parser.add_argument("-d", "--save_folder", help="folder to save dataset")
@@ -61,8 +55,8 @@ if __name__ == '__main__':
 	
 	create_dataset(
 		domain=args.domain, 
-		start_instance=args.instance,
-		num_instances=args.num_instances,
+		first_instance=args.ins[0],
+		last_instance=args.ins[1],
 		prost_log=args.prost_log,
 		save_folder=args.save_folder
 	)
