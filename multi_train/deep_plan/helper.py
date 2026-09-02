@@ -13,7 +13,7 @@ if root_path not in sys.path:
 import gym
 from gym.envs.rddl import instance_parser
 
-from heuristics.compute_heuristics import get_planner_wrapper
+from heuristics import compute_heuristics
 
 def load_config(file=None):
 	if file:
@@ -58,6 +58,7 @@ def get_instance_names():
 
 def make_envs(instances):
 	instance_parser.setup(my_config)
+	compute_heuristics.wrapper_type = my_config.init_heuristics
 	envs = []
 	for instance in instances:
 		try: 
@@ -66,7 +67,8 @@ def make_envs(instances):
 			if my_config.heuristics:
 				domain_folder = env.instance_parser.domain_folder
 				ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
-				planner_wrapper = get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
+				planner_wrapper = compute_heuristics.get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
+				planner_wrapper.normalization = my_config.heuristic_normalization
 				env.instance_parser.set_planner_wrapper(planner_wrapper)
 			envs.append(env)
 		except ValueError as e:

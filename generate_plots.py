@@ -9,8 +9,11 @@ import matplotlib.pyplot as plt
 
 plt.rcParams.update({'svg.fonttype': 'none'})  # keep text as text in SVG
 
-METHODS = {"standard": "Baseline", "standard-lmc": "LM-Cut"}
-DOMAINS = {"navigation": "Deterministic Navigation", "sysadmin": "SysAdmin"}
+METHODS = {"standard": "Baseline", "lmc_norm0": "LM-Cut", "lmc_norm1": "LM-Cut (norm)"}
+DOMAINS = {"navigation": "Deterministic Navigation", "navigation_mini": "Deterministic Navigation", 
+	"sysadmin": "SysAdmin",
+	"academic_advising": "Academic Advising"
+}
 
 FOLDER_TEMPLATE = "{domain}_{method}"
 LOSSES_TEMPLATE = "ckpt-{ckpt}_losses.csv"
@@ -44,6 +47,11 @@ def parse_arguments():
 
 def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str):
 	methods = []
+	method_dfs = {}
+	max_reward = float("-inf")
+	min_reward = float("inf")
+	max_loss = float("-inf")
+	min_loss = float("inf")
 	for method in METHODS.keys():
 		folder = os.path.join(root, FOLDER_TEMPLATE.format(domain=domain, method=method), 'checkpoints')
 		episodes = []
@@ -56,14 +64,20 @@ def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str
 			df_losses_i = pd.read_csv(losses_path, delimiter="\t")
 			episodes.append(df_episodes_i)
 			losses.append(df_losses_i)
-
 		df_episodes = pd.concat(episodes).sort_values("epoch")
 		df_losses = pd.concat(losses).sort_values("epoch")
+		method_dfs[method] = (df_episodes, df_losses)
+		max_reward = max(max_reward, df_episodes["reward"].max())
+		min_reward = min(min_reward, df_episodes["reward"].min())
+		max_loss = max(max_loss, df_losses["loss"].max())
+		min_loss = min(min_loss, df_losses["loss"].min())
 
+	ylims = (min_reward, max_reward, min_loss, max_loss)
+	for (method, (df_episodes, df_losses)) in method_dfs.items():
 		df_avg_episodes = df_episodes.groupby("epoch").mean().reset_index()
 		df_avg_losses = df_losses.groupby('epoch').mean().reset_index()
 
-		plot_learning_curve(out_dir, df_avg_episodes, df_avg_losses, method, domain, ext)
+		plot_learning_curve(out_dir, df_avg_episodes, df_avg_losses, method, domain, ext, ylims)
 
 		# Determine best reward
 		best_avg_reward = float(df_avg_episodes["reward"].iloc[-1])
@@ -96,7 +110,7 @@ def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str
 	print('\nAll done.\n')
 
 
-def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: str, domain: str, ext: str):
+def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: str, domain: str, ext: str, ylims):
 	#ep_episodes = [df['reward'].mean() for df in episodes]
 	#ep_epochs = range(1, (len(episodes)+1) * EPOCHS, EPOCHS)
 	total_epochs = df_avg_losses["epoch"].max()
@@ -110,6 +124,7 @@ def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: st
 	color = "tab:blue"
 	ax.set_ylabel('Average Total Reward', color=color)
 	ax.tick_params(axis='y', labelcolor=color)
+	ax.set_ylim(ylims[0], ylims[1])
 	ax.plot(df_avg_episodes["epoch"], df_avg_episodes["reward"], linewidth=1.5, color=color)
 	
 	# Axis y: Loss
@@ -118,6 +133,7 @@ def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: st
 	#ax.set_yscale('log')
 	ax.set_ylabel('Loss', color=color)
 	ax.tick_params(axis='y', labelcolor=color)
+	ax.set_ylim(ylims[2], ylims[3])
 	ax.plot(df_avg_losses["epoch"], df_avg_losses["loss"], alpha=0.5, linewidth=1, color=color)
 
 	ax.set_title(f'{METHODS[method]} - {DOMAINS[domain]}')

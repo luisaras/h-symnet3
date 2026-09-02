@@ -24,7 +24,9 @@ def parse_arguments():
 		action="store_true")
 	parser.add_argument("-f", "--heuristics", help="heuristic features (lmc, hadd, hmax)",
 		nargs="*", default=[])
-	parser.add_argument("-q", "--quick", help="for quick tests (uses fewer instances)",
+	parser.add_argument("-q", "--quick", help="for sanity tests (uses debug instances)",
+		action="store_true")
+	parser.add_argument("-t", "--test", help="for local tests (uses fewer instances)",
 		action="store_true")
 	args = parser.parse_args()
 	return args
@@ -88,6 +90,10 @@ if __name__ == "__main__":
 		train_instances = "[251, 252, 253]"
 		val_instances = "[251, 254]"
 		test_instances = "[251, 254]"
+	elif args.test:
+		train_instances = "range(1, 31)"
+		val_instances = "range(31, 41)"
+		test_instances = "range(41, 51)"
 	elif my_config.setting == "lr":
 		train_instances = "range(1, 1001)"
 		val_instances = "range(101, 1101)"
@@ -116,6 +122,12 @@ if __name__ == "__main__":
 			heuristics = ",".join([f"'{h}'" for h in args.heuristics])
 			print("Using heuristics: " + heuristics)
 			file.write(f"\nheuristics = [{heuristics}]")
+			if "cache" in args.model:
+				file.write(f"\ninit_heuristics = 'null'")
+			if "norm0" in args.model:
+				file.write(f"\nheuristic_normalization = 'horizon'")
+			elif "norm1" in args.model:
+				file.write(f"\nheuristic_normalization = 'std'")
 
 	py_dir = os.path.join("multi_train", "deep_plan")
 	config_path = os.path.join("..", "..", "temp_config.py")

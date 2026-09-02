@@ -48,5 +48,9 @@ use_fluent_for_kl = True
 num_threads = 4 # Number of threads to parallelize inference
 mode = "no_dist"
 
-net_config=None # custom symnet3_config.py
-heuristics=[]
+net_config=None # for a custom symnet3_config.py
+
+# Planning heuristics
+heuristics=[] # lmc, hadd, hmax
+init_heuristics="on_demand" # start: initialize on start; on_demand: only when needed (on simulation); null: never (only use pre-computed)
+heuristic_normalization = "none"

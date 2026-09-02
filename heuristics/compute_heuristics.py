@@ -45,11 +45,15 @@ def convert_prost_state(state, var_names):
 
 
 class PlannerWrapper:
-	def __init__(self, server=None):
+	def __init__(self, server=None, server_args=None):
 		self.server = server
+		self.server_args = server_args
+		self.normalization = 'horizon'
 		self.dataset = dict()
 
 	def add_cache(self, file):
+		self.h_max = [0] * len(self.instance_parser.heuristic_names)
+		self.h_min = [float("inf")] * len(self.instance_parser.heuristic_names)
 		with open(file, "r") as f:
 			for line in f:
 				row = line.split(":")
@@ -58,26 +62,61 @@ class PlannerWrapper:
 				for name, v in zip(values, values[1:]):
 					h[name] = float(v)
 				atoms = convert_prost_state(row[0].strip(), self.instance_parser.num_to_state)
-				self.dataset[atoms] = [h[name] for name in self.instance_parser.heuristic_names]
+				values = [h[name] for name in self.instance_parser.heuristic_names]
+				self.dataset[atoms] = values
+				for i in range(len(values)):
+					if self.normalization == 'horizon':
+						values[i] /= self.instance_parser.horizon
+					elif self.normalization == 'std':
+						self.h_max[i] = max(self.h_max[i], values[i])
+						self.h_min[i] = min(self.h_min[i], values[i])
 		self.null_heuristics = [0] * self.instance_parser.get_num_heuristics()
+		if self.normalization == 'std':
+			for values in self.dataset.values():
+				for i in range(len(values)):
+					n = self.h_max[i] - self.h_min[i]
+					if n > 0:
+						values[i] = (values[i] - self.h_min[i]) / n 
+
 
 	def compute_heuristics(self, state):
 		atoms = convert_symnet_state(state, self.instance_parser.num_to_state)
 		if atoms in self.dataset:
 			return self.dataset[atoms]
-		elif self.server:
-			return self.server.service.compute_heuristics(atoms)
-		else:
-			return self.null_heuristics
+		if self.server is None:
+			if self.server_args is None:
+				return self.null_heuristics
+			args = self.server_args
+			# Build server on demand
+			self.server = problem_server.make_planner_server(*args)
+			self.server_args = None
+		# Compute on the fly
+		heuristics = self.server.service.compute_heuristics(atoms)
+		if self.normalization == 'std':
+			for i in range(len(heuristics)):
+				n = self.h_max[i] - self.h_min[i]
+				if n > 0:
+					heuristics[i] = (heuristics[i] - self.h_min[i]) / n 
+		elif self.normalization == 'horizon':
+			for i in range(len(heuristics)):
+				heuristics[i] /= self.instance_parser.horizon
+		self.dataset[atoms] = heuristics
+		return heuristics
 
 
 wrappers = dict()
+wrapper_type = "on_demand"
 def get_planner_wrapper(ppddl_file, instance_name, heuristics):
 	if instance_name in wrappers:
 		return wrappers[instance_name]
 	else:
-		server = problem_server.make_planner_server(ppddl_file, instance_name, heuristics)
-		wrapper = PlannerWrapper(server)
+		if wrapper_type == "null":
+			wrapper = PlannerWrapper()
+		elif wrapper_type == "on_demand":
+			wrapper = PlannerWrapper(server_args=(ppddl_file, instance_name, heuristics))
+		else:
+			server = problem_server.make_planner_server(ppddl_file, instance_name, heuristics)
+			wrapper = PlannerWrapper(server=server)
 		wrappers[instance_name] = wrapper
 		return wrapper
 

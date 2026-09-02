@@ -255,8 +255,8 @@ def build_ppddl(instance_name, w, h, horizon, P):
 
 	;; extensoes usadas por simuladores IPPC-style (mdpsim/prost),
 	;; ignoradas por parsers estritamente PPDDL1.0
-	(:horizon {horizon})
-	(:discount-factor 1.0)
+	;; (:horizon {horizon})
+	;; (:discount-factor 1.0)
 )
 """
 	return domain, problem
