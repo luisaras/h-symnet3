@@ -1,6 +1,5 @@
 import sys, os, argparse, copy
 from concurrent.futures import ProcessPoolExecutor
-import pandas as pd
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
 root_path = os.path.abspath(os.path.join(curr_dir_path, ".."))
@@ -25,112 +24,164 @@ def parse_arguments():
 	return parser.parse_args()
 
 
-def convert_symnet_state(state, var_names):
-	"""Converts state dict to a string format that SSiPP can read.
+def symnet2ssipp_state(state: list, var_names):
+	"""Converts state list to a string format that SSiPP can read.
 	var_names should convert an index to a RDDL fluent string."""
 
 	# Prop format: "fluent_name arg1 arg2 argN" 
 	format_props = []
 	for i, val in enumerate(state):
-		if val == 1:
+		if val == 1 and var_names[i] != "termination":
 			# format: fluent_name(arg1,args2,argN)
 			var = var_names[i].replace("(", " ").replace(")", "").replace(",", " ")
 			format_props.append(var)
 	format_props.sort()
 	return ', '.join(format_props)
 
-def convert_prost_state(state, var_names):
+
+def prost2ssipp_state(state, var_names):
 	s = [float(i) for i in state.split(",")]
-	return convert_symnet_state(s, var_names)
+	return symnet2ssipp_state(s, var_names)
+
+
+def merge_heuristics(heuristics, heuristic_names=None):
+	features = []
+	if heuristic_names is None: # list of lists
+		for h in heuristics:
+			features.extend(h)
+	else:
+		for name in heuristic_names: # dict of lists
+			features.extend(heuristics[name])
+	return features
+
+def read_heuristic_values(file, instance_parser) -> dict:
+	dataset = dict()
+	with open(file, "r") as f:
+		for line in f:
+			row = line.split(":")
+			atoms = prost2ssipp_state(row.pop(0), instance_parser.num_to_state)
+			heuristics = dict()
+			for i, h in enumerate(row):
+				values = h.strip().split(",")
+				name = values.pop(0)
+				heuristics[name] = [float(v) for v in values]
+			dataset[atoms] = heuristics
+	return dataset
+
+def write_heuristic_values(file, dataset: dict, instance_parser):
+	# Compute heuristic
+	print("Computing heuristics for " + problem + "...", flush=True)
+	# Write results
+	with open(file, "w") as f:
+		for s, values in dataset.items():
+			heuristics = [",".join([name] + list(map(str, h))) for name, h in zip(instance_parser.heuristic_names, values)]
+			f.write(":".join([s] + heuristics) + "\n")
+
+def read_prost_states(file):
+	states = []
+	with open(file, "r") as f:
+		for line in f:
+			row = line.split(":")
+			states.append(row[1])
+	return states
 
 
 class PlannerWrapper:
-	def __init__(self, server=None, server_args=None):
+	def __init__(self, problem, server=None, server_args=None):
+		self.problem = problem
 		self.server = server
 		self.server_args = server_args
 		self.normalization = 'horizon'
-		self.dataset = dict()
+		self._cache = dict()
+		self.h_max = None
+		self.h_min = None
+
+	def get_num_heuristic_features(self):
+		return ssipp_interface.num_heuristic_features(self.instance_parser.heuristic_names)
 
 	def add_cache(self, file):
-		self.h_max = [0] * len(self.instance_parser.heuristic_names)
-		self.h_min = [float("inf")] * len(self.instance_parser.heuristic_names)
-		with open(file, "r") as f:
-			for line in f:
-				row = line.split(":")
-				values = row[1].strip().split(",")
-				h = dict()
-				for name, v in zip(values, values[1:]):
-					h[name] = float(v)
-				atoms = convert_prost_state(row[0].strip(), self.instance_parser.num_to_state)
-				values = [h[name] for name in self.instance_parser.heuristic_names]
-				self.dataset[atoms] = values
+		self.null_heuristics = [0] * self.get_num_heuristic_features()
+		dataset = read_heuristic_values(file, self.instance_parser)
+		for s, heuristics in list(dataset.items()):
+			dataset[s] = merge_heuristics(heuristics, self.instance_parser.heuristic_names)
+		self._cache.update(dataset)
+		if self.normalization == 'max':
+			if self.h_max is None:
+				self.h_max = [0] * dim
+				self.h_min = [float("inf")] * dim
+			self.update_min_max(dataset)
+			for values in dataset.values():
+				self.normalize_min_max(values)
+		elif self.normalization == 'horizon':
+			for values in dataset.values():
 				for i in range(len(values)):
-					if self.normalization == 'horizon':
-						values[i] /= self.instance_parser.horizon
-					elif self.normalization == 'std':
-						self.h_max[i] = max(self.h_max[i], values[i])
-						self.h_min[i] = min(self.h_min[i], values[i])
-		self.null_heuristics = [0] * self.instance_parser.get_num_heuristics()
-		if self.normalization == 'std':
-			for values in self.dataset.values():
-				for i in range(len(values)):
-					n = self.h_max[i] - self.h_min[i]
-					if n > 0:
-						values[i] = (values[i] - self.h_min[i]) / n 
+					values[i] /= self.instance_parser.horizon
 
+	def update_min_max(dataset):
+		dim = self.get_num_heuristic_features()
+		for values in dataset.values():
+			for i in range(dim):
+				self.h_max[i] = max(self.h_max[i], values[i])
+				self.h_min[i] = min(self.h_min[i], values[i])
 
-	def compute_heuristics(self, state):
-		atoms = convert_symnet_state(state, self.instance_parser.num_to_state)
-		if atoms in self.dataset:
-			return self.dataset[atoms]
+	def normalize_min_max(self, values):		
+		for i in range(len(values)):
+			n = self.h_max[i] - self.h_min[i]
+			if n > 0:
+				values[i] = (values[i] - self.h_min[i]) / n 
+
+	def get_heuristics(self, state: list) -> list:
+		atoms = symnet2ssipp_state(state, self.instance_parser.num_to_state)
+		if atoms in self._cache:
+			return self._cache[atoms]
 		if self.server is None:
 			if self.server_args is None:
 				return self.null_heuristics
 			args = self.server_args
-			# Build server on demand
+			print("Building server for problem " + self.problem + " on demand to compute state: " + atoms)
 			self.server = problem_server.make_planner_server(*args)
 			self.server_args = None
 		# Compute on the fly
 		heuristics = self.server.service.compute_heuristics(atoms)
-		if self.normalization == 'std':
-			for i in range(len(heuristics)):
-				n = self.h_max[i] - self.h_min[i]
-				if n > 0:
-					heuristics[i] = (heuristics[i] - self.h_min[i]) / n 
+		features = merge_heuristics(heuristics)
+		if self.normalization == 'max':
+			self.normalize_min_max(features)
 		elif self.normalization == 'horizon':
-			for i in range(len(heuristics)):
-				heuristics[i] /= self.instance_parser.horizon
-		self.dataset[atoms] = heuristics
-		return heuristics
+			for i in range(len(features)):
+				features[i] /= self.instance_parser.horizon
+		self._cache[atoms] = features
+		return features
 
 
 wrappers = dict()
-wrapper_type = "on_demand"
+wrapper_type = "start"
 def get_planner_wrapper(ppddl_file, instance_name, heuristics):
 	if instance_name in wrappers:
 		return wrappers[instance_name]
 	else:
 		if wrapper_type == "null":
-			wrapper = PlannerWrapper()
+			wrapper = PlannerWrapper(instance_name)
 		elif wrapper_type == "on_demand":
-			wrapper = PlannerWrapper(server_args=(ppddl_file, instance_name, heuristics))
+			wrapper = PlannerWrapper(instance_name,server_args=(ppddl_file, instance_name, heuristics))
 		else:
 			server = problem_server.make_planner_server(ppddl_file, instance_name, heuristics)
-			wrapper = PlannerWrapper(server=server)
+			wrapper = PlannerWrapper(instance_name, server=server)
 		wrappers[instance_name] = wrapper
 		return wrapper
 
 
-def compute_heuristics(states, heuristic_names, planner_exts, index_map):
+def compute_all_heuristics(states, heuristic_names, planner_exts, index_map) -> dict:
 	results = dict()
 	for s in states:
 		if s in results:
 			continue
-		atoms = convert_prost_state(s, index_map)
+		atoms = prost2ssipp_state(s, index_map)
 		print("Heuristics for state: " + str(atoms))
 		values = planner_exts.compute_heuristics(atoms)
-		heuristics = [name + "," + str(h) for name, h in zip(heuristic_names, values)]
-		results[s] = s + ":" + ",".join(heuristics) + "\n"
+		if values is None:
+			print("Failed to compute heuristics")
+			continue
+		results[s] = values
 	return results
 
 if __name__ == '__main__':
@@ -142,7 +193,7 @@ if __name__ == '__main__':
 		states=["1,0,0,0", "0,1,0,0", "0,0,1,0", "0,0,0,1"]
 		# Compute heuristics
 		planner_exts = ssipp_interface.PlannerExtensions([problem + ".ppddl"], problem, args.heuristics)
-		results = compute_heuristics(states, args.heuristics, planner_exts, index_map)
+		results = compute_all_heuristics(states, args.heuristics, planner_exts, index_map)
 		# Write results
 		print(results)
 	else:
@@ -160,13 +211,12 @@ if __name__ == '__main__':
 		my_config.heuristics = args.heuristics
 		my_config.benchmark_folder = os.path.abspath(args.benchmark)
 		instance_parser.setup(my_config)
-		index_map = instance_parser.InstanceParser(args.domain, args.instance).num_to_state
+		instance_parser = instance_parser.InstanceParser(args.domain, args.instance)
 
 		# States
-		df = pd.read_csv(data_file, delimiter=":", header=None, nrows=None)
+		states = read_prost_states(data_file)
 		# Compute heuristic
 		print("Computing heuristics for " + problem + "...", flush=True)
-		results = compute_heuristics(df[1], args.heuristics, planner_exts, index_map)	
+		results = compute_all_heuristics(states, args.heuristics, planner_exts, instance_parser.num_to_state)	
 		# Write results
-		with open(save_file, "w") as f:
-			f.writelines(results.values())
+		write_heuristic_values(save_file, results, instance_parser)

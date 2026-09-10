@@ -1,92 +1,47 @@
 import argparse
 import sys
 import os
-import threading
-import multiprocessing
 import my_config
 import csv
-from time import time
-import multiprocessing
 import pandas as pd
 import numpy as np
-from env_instance_wrapper import EnvInstanceWrapper
-from multiprocessing import Manager
-
-lock = threading.Lock()
+import logging, traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-gym_path = os.path.abspath(os.path.join(curr_dir_path, "../.."))
-if gym_path not in sys.path:
-    sys.path = [gym_path] + sys.path
-network_path = os.path.abspath(os.path.join(curr_dir_path, "networks"))
-if network_path not in sys.path:
-    sys.path = [network_path] + sys.path
+parent_dir_path = os.path.abspath(os.path.join(curr_dir_path,"..",".."))
+if parent_dir_path not in sys.path:
+    sys.path = [parent_dir_path] + sys.path
 
-from policy_monitor import PolicyMonitor
-from worker_testing import Worker
 import helper
+from policy_monitor import PolicyMonitor
 from model_factory import ModelFactory
 
-
-def create_workers(NUM_WORKERS, network, instances, N_train_instances, train_summary_writer, val_summary_writer, model_factory, env_instance_wrapper_all):
-    network_copy = model_factory.create_network(env_instance_wrapper_all)
-    pe = PolicyMonitor(
-        envs=helper.make_envs(instances),
-        network=network,
-        domain=my_config.domain,
-        instances=instances,
-        summary_writer=val_summary_writer,
-        model_factory=model_factory,
-        network_copy=network_copy)
-    workers = []
-    for worker_id in range(NUM_WORKERS):
-        worker_summary_writer = None
-        policy_monitor = None
-        if worker_id == 0:
-            worker_summary_writer = train_summary_writer
-            policy_monitor = pe
-        worker = Worker(
-            worker_id=worker_id,
-            envs=helper.make_envs(instances[:N_train_instances]),
-            global_network=network,
-            domain=my_config.domain,
-            instances=instances[:N_train_instances],
-            model_factory=model_factory,
-            lock=lock,
-            policy_monitor=policy_monitor,
-            summary_writer=worker_summary_writer)
-        workers.append(worker)
-    return workers
-
-
-def evaluate(model_dir, ckpt_dir, test_instance, num_episodes, process_index, output_dict):
-    is_human_eval = False
-    get_random_policy = False
-    plot_graph = False
+def evaluate_instance(model_dir, ckpt_dir, test_instance, num_episodes, process_index):
     import tensorflow as tf
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
 
-    envs_ = helper.make_envs([test_instance])
-
-    NUM_WORKERS = 1
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # Don't use GPU for inference
-    train_summary_writer = None
     val_summary_writer = None
 
-    policynet_optim = tf.keras.optimizers.RMSprop(lr=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
+    test_envs = helper.make_envs([test_instance])
+    print("Envs created.")
 
-    env_instance_wrapper_all = EnvInstanceWrapper(envs_)
-    args = helper.create_modelfactory_args(policynet_optim=policynet_optim, instances=[test_instance], env_instance_wrapper=env_instance_wrapper_all)
-    helper.add_network_args(args, envs_[0], model_dir, copy_config=False)
+    policynet_optim = tf.keras.optimizers.RMSprop(learning_rate=my_config.lr, rho=0.99, momentum=0.0, epsilon=1e-6)
+    model_factory = ModelFactory(test_envs[0], policynet_optim=policynet_optim)
 
-    model_factory = ModelFactory(args)
-    network = model_factory.create_network(env_instance_wrapper_all)
-    for e in envs_:
-        e.close()
+    network = model_factory.create_network()
+    network.init_network(test_envs[0])
+    policy_monitor = PolicyMonitor(
+        envs=test_envs,
+        network=network,
+        domain=my_config.domain,
+        summary_writer=val_summary_writer,
+        model_factory=model_factory)
+    print("Created policy monitor.")
 
     # Create CheckpointManager
-    # ckpt_parts = network.get_ckpt_parts()
     ckpt_parts = {}
     ckpt_parts["network"] = network
     ckpt_parts["policynet_optim"] = policynet_optim
@@ -94,62 +49,49 @@ def evaluate(model_dir, ckpt_dir, test_instance, num_episodes, process_index, ou
     ckpt_manager = tf.train.CheckpointManager(ckpt, ckpt_dir, 2000)
     model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
 
-    workers = create_workers(NUM_WORKERS, network, [test_instance],
-                             1, train_summary_writer, val_summary_writer,
-                             model_factory,env_instance_wrapper_all)
-    if not get_random_policy and not is_human_eval:
-        model_factory.load_ckpt(my_config.exact_checkpoint)
-
-    policy_monitor = workers[0]
-    
-    if is_human_eval:
-        policy_monitor.evaluate_human(num_episodes)
-        return
+    # Load weights
+    model_factory.load_ckpt(my_config.exact_checkpoint)
 
     print("In process:", process_index)
-    total_rewards, _ = policy_monitor.evaluate(num_episodes=num_episodes,
-                                               save_model=False, get_random=get_random_policy,
-                                               plot_graph=plot_graph, file_name=my_config.trained_model_path)
+    policy_monitor.copy_params()
+    results = policy_monitor.eval_policy(num_episodes=num_episodes)
+
+    test_envs[0].close()
 
     sys.stdout = sys.__stdout__
-    print("Rewards:", total_rewards)
-    output_dict[process_index] = total_rewards
-   
+    print("Rewards:", results["ep_crewards"])
+
+    return results
+
 
 def test(model_dir, ckpt_dir):
-    train_instances, N_train_instances, test_instances, N_test_instances, instances = helper.get_instance_names()
-    print(test_instances)
-    # Control variables
-    get_random_policy = False
+    _, test_instances = helper.get_instance_names()
     num_episodes = my_config.num_testing_episodes
-    
-    # print(f"Launching {num_threads} processes")
-    manager = Manager()
-    rewards_all_instances = []
-    output_dict = manager.dict()
 
-    with multiprocessing.Pool(my_config.num_threads) as pool:
-        print(pool._processes)
-        results = pool.starmap(evaluate, [(model_dir, ckpt_dir, inst, num_episodes, i, output_dict) for i, inst in enumerate(test_instances)])
-
-    print(output_dict, len(test_instances))
-    for i in range(len(test_instances)):
-        rewards_all_instances.append(output_dict[i])
-
-    total_rewards = np.array(rewards_all_instances)
+    results_all_instances = {}
+    with ThreadPoolExecutor(max_workers=my_config.num_threads) as executor:
+        arg_list = [(model_dir, ckpt_dir, instance, num_episodes, i) for i, instance in enumerate(test_instances)]
+        futures = [executor.submit(evaluate_instance, *arg) for arg in arg_list]
+        for future, arg in zip(as_completed(futures), arg_list):
+            try:
+                results_all_instances[arg[2]] = future.result()
+            except Exception as exc:
+                print(f"Task {arg[4]} generated an exception: {exc}", file=sys.stderr)
+                traceback.print_exc()
+                sys.exit(1)
 
     csv_file = os.path.abspath(os.path.join(model_dir, "results.csv"))
-    
     with open(csv_file, 'a', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Instance", "Mean Rewards", "Standard deviation", "Rewards(per episode)"])
-
-    for i in range(len(test_instances)):
-        current_rewards = total_rewards[i]
-        with open(csv_file, 'a', newline='') as file:
+        for ins in test_instances:
+            results = results_all_instances[ins]
+            mean_creward = results["creward_means"][0]
+            std_creward = results["creward_stds"][0]
+            eps_crewards = results["ep_crewards"][0]
             writer = csv.writer(file)
-            writer.writerow([test_instances[i], np.mean(current_rewards), np.std(current_rewards) / (num_episodes ** 0.5),
-                            current_rewards])
+            writer.writerow([ins, mean_creward, std_creward, eps_crewards])
+    print("Saved results on file " + csv_file)
 
 
 if __name__ == '__main__':
@@ -168,8 +110,10 @@ if __name__ == '__main__':
             my_config.test_instance = ",".join([str(2200+i) for i in range(200)])
 	
     model_dir, ckpt_dir, log_file = helper.get_model_dir(config_file)
+    if my_config.restore_config:
+        helper.restore_settings(model_dir)
 
-    if not my_config.exact_checkpoint:
+    if my_config.exact_checkpoint is None:
         ckpts = helper.read_checkpoint_log(log_file)
         best_rew = -1000000
         for ckpt in ckpts:

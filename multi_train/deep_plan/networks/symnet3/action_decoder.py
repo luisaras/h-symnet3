@@ -1,6 +1,12 @@
 from tensorflow.keras.layers import Layer
 import tensorflow as tf
 
+def get_activation_fn(activation):
+	if activation == "relu":
+		return tf.nn.relu
+	elif activation == "lrelu":
+		return tf.nn.leaky_relu
+
 class ActionDecoder(Layer):
 	def __init__(self, params): # Decoder dimension refers to the same param as Sankalp
 		"""
@@ -9,22 +15,17 @@ class ActionDecoder(Layer):
 		super(ActionDecoder,self).__init__()
 		self.ad_params = params
 		self.type = params["type"]
-		self.activation = self.get_activation(self.ad_params['activation'])
+		self.activation = get_activation_fn(params['activation'])
 		self.use_ge = params["use_ge"]
 		self.dropout_rate = params["dropout_rate"]
 
 		self.dropout_layer = tf.keras.layers.Dropout(self.dropout_rate)
 		if self.type == "symnet":
-			self.layer1 = tf.keras.layers.Dense(units=self.ad_params["decoder_dim"], activation=self.activation)
+			self.layer1 = tf.keras.layers.Dense(units=params["decoder_dim"], activation=self.activation)
 			self.layer2 = tf.keras.layers.Dense(units=1)
 		else:
 			raise ValueError("networks.ActionDecoder: Invalid actiondecoder type: " + self.type)
 
-	def get_activation(self, activation):
-		if activation == "relu":
-			return tf.nn.relu
-		elif activation == "lrelu":
-			return tf.nn.leaky_relu
 
 	def call(self, inputs):
 		"""

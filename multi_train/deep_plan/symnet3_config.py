@@ -1,8 +1,5 @@
-import tensorflow as tf
-import my_config
 
 activation = "lrelu"
-activation_fn = tf.nn.leaky_relu
 
 general_params = {
 	"use_bidir_edges" : False,
@@ -11,7 +8,9 @@ general_params = {
 	"add_in_deg" : True,
 	"add_bet_cen" : True,
 	"add_dist_leaves" : True,
-	"make_grid" : False
+	"make_grid" : False,
+	"use_self_loops_in_all_adj": True,
+	"remove_attn": False
 }
 
 se_params = {		
@@ -25,7 +24,7 @@ se_params = {
 	"out_filters" : 1,                      # Keeping same as filter_size_l
 	"add_self_loops" : True,
 	"dropout_rate" : 0,
-	"activation" : activation_fn,
+	"activation" : activation,
 	"num_se" : None,
 	"conv_type" : "GAT",  # GAT | GNNCNNStyle
 	"use_edge_types" : True, # This should be true, just checking if code works with false
@@ -58,7 +57,7 @@ tfm_params = {
 	"attn_heads" : 3,
 	"transformer_ff_units" : 10,
 	"dropout_rate": 0,
-	"activation": activation_fn
+	"activation": activation
 }
 
 ge_params["tfm_params"] = tfm_params

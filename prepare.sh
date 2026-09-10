@@ -100,7 +100,7 @@ plan() {
 		mkdir data/datasets/$d
 	fi
 	python3 prost/dataset_builder.py $d ${first_inst} -n ${num_inst} -d "data/datasets/$d" -l data/logs/$d
-	compute_heuristics $d
+	precompute_heuristics $d
 }
 
 generate_traces() {
@@ -119,7 +119,7 @@ generate_traces() {
 	done
 }
 
-compute_heuristics() {
+precompute_heuristics() {
 	echo "Compute heuristics from PROST traces."
 	if [ ! -d "data/heuristics" ]; then
 		mkdir data/heuristics

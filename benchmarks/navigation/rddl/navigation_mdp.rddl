@@ -66,6 +66,9 @@ domain navigation_mdp {
 		
 		// Fluents
 		robot-at(xpos, ypos) : {state-fluent, bool, default = false};
+
+		// Hack for parsers that don't recognize the "termination" keyword
+		termination : {state-fluent, bool, default = false};
 		
 		// Actions
 		move-north : {action-fluent, bool, default = false};
@@ -96,7 +99,10 @@ domain navigation_mdp {
 				Bernoulli( 1.0 - P(?x, ?y) ) 
 			else 
 				KronDelta( robot-at(?x,?y) );
-				
+
+		termination' = ([sum_{?x : xpos, ?y : ypos} robot-at(?x,?y)] == 0)
+					 | exists_{?x : xpos, ?y : ypos} [ GOAL(?x,?y) ^ robot-at(?x,?y) ];
+
 	};
 	
 	// 0 reward for reaching goal, -1 in all other cases

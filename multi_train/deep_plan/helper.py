@@ -1,9 +1,9 @@
-import os
+import os, sys
 import numpy as np
 import shutil
-import sys
 import my_config
 import symnet3_config
+from env_instance_wrapper import EnvInstanceWrapper
 from datetime import datetime
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -13,79 +13,47 @@ if root_path not in sys.path:
 import gym
 from gym.envs.rddl import instance_parser
 
-from heuristics import compute_heuristics
+def load_config_mods(file, module):
+	with open(file, "r") as f:
+		file_content = f.read()
+		exec(file_content, globals(), module.__dict__)
 
 def load_config(file=None):
 	if file:
-		with open(file, "r") as file:
-			file_content = file.read()
-			exec(file_content, globals(), my_config.__dict__)
-	if my_config.mode == 'no_dist': # SymNet2.0
-		my_config.add_aux_loss = False
-		my_config.decay_aux_loss = False
-	elif my_config.mode == "kl": # SymNet3.0+KL
-		my_config.add_aux_loss = True
-		my_config.decay_aux_loss = False
-	elif my_config.mode == "no_kl": # SymNet3.0-KL 
-		my_config.add_aux_loss = False
-		my_config.decay_aux_loss = False
-	elif my_config.mode == "kl_decay": # SymNet3.0+KL_{decay}
-		my_config.add_aux_loss = True
-		my_config.decay_aux_loss = True
-	if my_config.net_config:
-		with open(my_config.net_config, "r") as file:
-			file_content = file.read()
-			exec(file_content, globals(), symnet3_config.__dict__)
-	if my_config.mode == "no_dist":
+		load_config_mods(file, my_config)
+	load_net_config(my_config.net_config)
+
+def load_net_config(net_config=None):
+	if net_config:
+		load_config_mods(net_config, symnet3_config)
+	if not my_config.add_aux_loss: # SymNet2.0 config
 		symnet3_config.se_params["use_preprocess_layer"] = False
-		symnet3_config.se_params["num_preprocess"] = 4 # Filter size in each GAT (num of
-		symnet3_config.se_params["num_postprocess"] = 4 # Filter size in each GAT (num of
+		symnet3_config.se_params["num_preprocess"] = 4 # Filter size in each GAT
+		symnet3_config.se_params["num_postprocess"] = 4 # Filter size in each GAT
 		symnet3_config.se_params["use_distance_mat"] = False
 		symnet3_config.se_params["use_preprocess_layer"] = False
 
 def get_instance_names():
-	train_instances,test_instances = [],[]
+	train_instances, test_instances = [], []
 	for instance_num in my_config.train_instance.strip().split(","):
 		instance = "{}".format(instance_num)
 		train_instances.append(instance)
 	for instance_num in my_config.test_instance.strip().split(","):
 		instance = "{}".format(instance_num)
 		test_instances.append(instance)
-	instances = []
-	instances.extend(train_instances)
-	instances.extend(test_instances)
-	return train_instances,len(train_instances),test_instances,len(test_instances),instances
+	return train_instances, test_instances
 
 def make_envs(instances):
 	instance_parser.setup(my_config)
-	compute_heuristics.wrapper_type = my_config.init_heuristics
 	envs = []
 	for instance in instances:
 		try: 
 			env_name = "RDDL-{}{}-v1".format(my_config.domain, instance)
 			env = gym.make(env_name)
-			if my_config.heuristics:
-				domain_folder = env.instance_parser.domain_folder
-				ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
-				planner_wrapper = compute_heuristics.get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
-				planner_wrapper.normalization = my_config.heuristic_normalization
-				env.instance_parser.set_planner_wrapper(planner_wrapper)
-			envs.append(env)
+			envs.append(EnvInstanceWrapper(env))
 		except ValueError as e:
 			print(e)
 	return envs
-
-def get_env_metadata(envs_):
-	num_nodes_list = []
-	num_valid_actions_list = []
-	num_graph_fluent_list = []
-	num_adjacency_list = []
-	for env_ in envs_:
-		num_nodes_list.append(env_.get_num_nodes())
-		num_valid_actions_list.append(env_.get_num_actions())
-		num_graph_fluent_list.append(env_.get_num_graph_fluents())
-		num_adjacency_list.append(env_.get_num_adjacency_list())
-	return num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list
 
 def failsafe():
 	print("================================================================")
@@ -99,54 +67,42 @@ def failsafe():
 	print("================================================================")
 	input()
 
-def create_modelfactory_args(**kwargs):
-	args = {}
-	for key,value in kwargs.items():
-		args[key] = value
-	if "policynet_optim" not in args.keys():
-		args["policynet_optim"] = None
-	args["grad_clip_value"] = my_config.grad_clip_value
-
-	return args
-
-def add_network_args(args, env, MODEL_DIR, copy_config=True):
-	args["general_params"] = symnet3_config.general_params
-	args["se_params"] = symnet3_config.se_params
-	args["ad_params"] = symnet3_config.ad_params
-	args["ge_params"] = symnet3_config.ge_params
-	args["tm_params"] = symnet3_config.tm_params
-
-	args["se_params"]["num_se"] = env.get_num_adjacency_list()
-	if my_config.fc_adjacency:
-		args["se_params"]["num_se"] += 1
-	args["ad_params"]["num_action_templates"] = env.get_num_type_actions()
-
-	if copy_config:
-		shutil.copy(os.path.abspath("symnet3_config.py"), MODEL_DIR)
-		if my_config.net_config:
-			shutil.copy(os.path.abspath(my_config.net_config), MODEL_DIR + "/symnet3_config_mods.py")
-
-def get_adj_mat_from_list(adjacency_list):
-	l = len(adjacency_list)
-	adj_mat = np.array(np.zeros((l, l), dtype=np.int32), dtype=np.int32)
-	for key, value in adjacency_list.items():
-		for val in value:
-			adj_mat[key, val] = 1
-	for i in range(l):
-		adj_mat[i][i] = 1
-	return adj_mat
 
 def write_content(file_path, content):
-	with open(file_path, 'a') as f:
-		f.write(content)
+	try:
+		with open(file_path, 'a') as f:
+			f.write(content)
+	except OSError as e:
+		print("Error writing file: " + str(file_path), file=sys.stderr)
+		print(e)
+		sys.exit(e.errno)
 
-def backup_source_code(model_dir, config_file=None):
-    py_source = os.path.join(model_dir, "source_")
-    shutil.copy(os.path.abspath("my_config.py"), py_source + "my_config.py")
-    if config_file:
-        shutil.copy(os.path.abspath(config_file), py_source + "config_mods.py")
-    shutil.copy(os.path.abspath("policy_monitor.py"), py_source + "policy_monitor.py")
-    shutil.copy(os.path.abspath("networks/symnet3/symnet3.py"), py_source + "symnet3.py")
+def copy_files_into(src_paths, dst_path):
+	with open(os.path.abspath(dst_path), "a") as dst:
+		for src_path in src_paths:
+			dst.write("\n")
+			with open(os.path.abspath(src_path), "r") as src:
+				shutil.copyfileobj(src, dst)
+
+def backup_settings(model_dir, config_file=None):
+	py_source = os.path.join(model_dir, "source_")
+	shutil.copy(os.path.abspath("my_config.py"), py_source + "my_config.py")
+	if config_file:
+		copy_files_into([config_file], py_source + "my_config.py")
+	#shutil.copy(os.path.abspath("policy_monitor.py"), py_source + "policy_monitor.py")
+	#shutil.copy(os.path.abspath("networks/symnet3/symnet3.py"), py_source + "symnet3.py")
+	shutil.copy(os.path.abspath("symnet3_config.py"), py_source + "symnet3_config.py")
+	if my_config.net_config:
+		copy_files_into([my_config.net_config], py_source + "symnet3_config.py")
+
+def restore_settings(model_dir):
+	py_source = os.path.join(model_dir, "source_")
+	config = py_source + "my_config.py"
+	if os.path.exists(config):
+		load_config(config)
+	net_config = py_source + "symnet3_config.py"
+	if os.path.exists(net_config):
+		load_net_config(net_config)
 
 def get_model_dir(config_file, create=False):
 	model_name = f"{my_config.domain}_{my_config.exp_description}"
@@ -158,7 +114,8 @@ def get_model_dir(config_file, create=False):
 	if create:
 		os.makedirs(model_dir, exist_ok=True)
 		os.makedirs(checkpoint_dir, exist_ok=True)
-		#backup_source_code(model_dir, config_file)
+		if my_config.restore_config:
+			backup_settings(model_dir, config_file)
 		#os.makedirs(os.path.join(model_dir, "instances"), exist_ok=True)
 		log_header = "init: " + str(datetime.now()) + "\n"
 		log_header += my_config.test_instance + "\n"

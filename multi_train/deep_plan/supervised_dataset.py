@@ -1,39 +1,36 @@
 import os
-import tensorflow as tf
 import numpy as np
 import pandas as pd
 import random
 import my_config
 import copy
 import helper
+import tensorflow as tf
 from tqdm import tqdm
 
-class SupervisedDataset(tf.keras.Model):
-	def __init__(self, instance_list, env_instance_wrapper, batch_size, num_episodes=None):
-		super(SupervisedDataset, self).__init__()
-
+class SupervisedDataset():
+	def __init__(self, instance_list, envs, batch_size):
 		self.instance_list = [int(i) for i in instance_list]
-		self.env_instance_wrapper = env_instance_wrapper
+		self.envs = envs
 		self.batch_size = batch_size
-		self.num_episodes = num_episodes
 
 		self.dataset = {}
 		print("Loading datasets...")
 		for i in tqdm(range(len(self.instance_list))):
 			self.load_dataset(i, self.instance_list[i])
 
-		self.instance_order = self.instance_list.copy()
-		random.shuffle(self.instance_order)
+	def __iter__(self):
+		instance_order = self.instance_list.copy()
+		random.shuffle(instance_order)
+		for ins in instance_order:
+			# Get samples from the current instance's dataset
+			env_index, states, actions = self.dataset[ins]
+			yield ins, env_index, states, actions
 
 	def load_dataset(self, instance_index, instance):
-		domain = self.env_instance_wrapper.envs[instance_index].instance_parser.domain
-		action_dict = self.env_instance_wrapper.envs[instance_index].instance_parser.action_to_num
-		action_dict['noop()'] = 0
+		domain = self.envs[instance_index].get_domain_name()
 		f = os.path.join(my_config.trajectory_dataset_folder, domain, f"{instance}.csv")
-		nrows = None if self.num_episodes is None else self.num_episodes*40
-		df = pd.read_csv(f, delimiter=":", header=None, nrows=nrows)
-
-		#instance = np.array(df[0], dtype="float32")
+		df = pd.read_csv(f, delimiter=":", header=None)
 
 		states = []
 		for s in df[1]: # Second column
@@ -42,7 +39,7 @@ class SupervisedDataset(tf.keras.Model):
 
 		states = np.stack(states)
 
-		actions = np.expand_dims(np.array(df[2].apply(lambda x: action_dict[x]), dtype="float32"), axis=-1)
+		actions = np.expand_dims(np.array(df[2].apply(lambda x: self.envs[instance_index].get_action_num(x)), dtype="float32"), axis=-1)
 		rewards = np.expand_dims(np.array(df[3], dtype="float32"), -1)
 
 		if my_config.last_in_dataset:
@@ -94,9 +91,9 @@ class SupervisedDataset(tf.keras.Model):
 		combined_dataset = np.hstack([states, actions])
 		np.random.shuffle(combined_dataset)
 		states = combined_dataset[:, :-1]
-		states = [states[i] for i in range(states.shape[0])]
+		states = [tuple(states[i]) for i in range(states.shape[0])]
 		actions = combined_dataset[:, -1]
 
 		# one hot actions
-		actions = np.eye(len(action_dict))[actions.astype(np.int32)]
+		actions = np.eye(self.envs[instance_index].get_num_actions())[actions.astype(np.int32)]
 		self.dataset[instance] = (instance_index, states, tf.convert_to_tensor(actions))

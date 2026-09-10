@@ -28,7 +28,6 @@ class InstanceParser(object):
         self.instance_file = os.path.join(self.domain_folder, "rddl", domain + "_inst_mdp__" + instance + ".rddl")
         self.parsed_instance_file = os.path.join(self.domain_folder, "parsed", domain + "_inst_mdp__" + instance)
         self.dot_file = os.path.join(self.domain_folder, "dbn", domain + "_inst_mdp__" + instance + ".dot")
-        self.planner_wrapper = None
         self.heuristic_names = my_config.heuristics
 
         # Read domain description
@@ -90,8 +89,6 @@ class InstanceParser(object):
         self.transition_unpara_nf_values = []
         self.reward_unpara_nf_values = []
         self.unpara_nf_values = []
-        self.para_state_of_objects_numeric_nf_values = None
-        self.para_state_of_objects_numeric_nf_values_names = set()
         for k in self.para_state_of_objects.keys():
             self.para_state_of_objects_nf_values[k] = []  #
             self.para_state_of_objects_nf_values_names[k] = []
@@ -112,23 +109,14 @@ class InstanceParser(object):
         self.type_encoding = []
         for i in range(len(self.node_dict)):
             self.type_encoding.append([0 for _ in range(len(self.type_of_nodes_in_graph))])
-        for key, item in self.node_dict.items():
-            pr = key.split(",")
-            sr = ""
-            for c in pr:
-                sr += self.object_name_to_type[c] +","
-            sr = sr[:-1]
-            for k, t in enumerate(sorted(self.type_of_nodes_in_graph)):
-                if t == sr:
-                    self.type_encoding[item][k] = 1
+        for node_key, node_index in self.node_dict.items():
+            names = node_key.split(",") # Split objects
+            node_type = ",".join([self.object_name_to_type[n] for n in names]) # Merge object types
+            for type_key, t in enumerate(sorted(self.type_of_nodes_in_graph)):
+                if t == node_type:
+                    self.type_encoding[node_index][type_key] = 1
                 else:
-                    self.type_encoding[item][k] = 0
-
-    def set_planner_wrapper(self, planner_wrapper):
-        self.planner_wrapper = planner_wrapper
-        planner_wrapper.instance_parser = self
-        h_file = os.path.join(my_config.heuristics_dataset_folder, self.domain, self.instance + '.csv')
-        planner_wrapper.add_cache(h_file)
+                    self.type_encoding[node_index][type_key] = 0
 
     def parse_instance_file(self):
         p = "##"  # Values of p are hard-coded in PROST. Should not be changed.
@@ -167,7 +155,9 @@ class InstanceParser(object):
         action_str = [i.strip().split('\n') for i in action_str] # Extract information about all actions from the instance file
         for ac in action_str:
             self.action_to_num[ac[2].replace(' ', '')] = int(ac[0]) + 1 # Constrct the mapping ({'move-east': 1, 'move-north': 2, 'move-south': 3, 'move-west': 4})
+        
         self.num_to_action = {v: k for k, v in self.action_to_num.items()} # Inverse dict
+
         self.state_to_num = {} # mapping form state to numbers
         det_str = self.parsed_instance_file_str[
                 self.parsed_instance_file_str.find(
@@ -382,32 +372,37 @@ class InstanceParser(object):
                     self.unpara_action_names.add(c.replace('$',
                                                         ''))  # Unparametrized Action variables (For instance a reset action which resets the whole instance)
             elif '->' in line:  # Defines a edge in the DBN (In the bipartite graph)
+                # "fluent(arg)" -> "fluent(arg)"
                 sp = line.split('->')
-                f = sp[0].strip()
-                t = sp[1].strip()
+                f = sp[0].strip().replace('$','')
+                t = sp[1].strip().replace('$','')
 
-                from_var = f[f.find('\"') + 1:f.find('(')].replace('$',
-                                                                '')  # State of the node from which edge starts (running)
+                # State of the node from which edge starts (running)
+                from_fluent = f[f.find('\"')+1:f.find('(')]
+
                 from_obj = ""
                 if f.find('(') != -1:
-                    from_obj = f[f.find('(') + 1:f.find(')')].replace('$', '').replace(' ',
-                                                                                    '')  # Parameteers from which edge starts (c1)
-                to_var = t[t.find('\"') + 1:t.find('(')].replace('$', '').replace('\'', '')
+                    # Parameters from which edge starts (c1)
+                    from_obj = f[f.find('(')+1:f.find(')')].replace(' ','')  
+
+                #to_var = t[t.find('\"') + 1:t.find('(')].replace('$', '').replace('\'', '')
                 to_obj = ""
                 if t.find('(') != -1:
-                    to_obj = t[t.find('(') + 1:t.find(')')].replace('$', '').replace(' ', '')
+                    to_obj = t[t.find('(')+1:t.find(')')].replace(' ', '')
                 else:
-                    continue
+                    continue # No nodes involved
 
-                if from_obj == "":
-                    if from_var in self.unpara_action_names:
-                        self.unpara_action_connections.add((from_var, to_obj))
-                    continue
-                if from_var in self.para_state_names:
-                    self.para_state_connections.add((from_obj, to_obj))  # Add connections between two states
-                elif from_var in self.para_action_names:
-                    self.para_action_connections.add(
-                        (to_obj, from_obj, from_var))  # Add connections between the action to the state
+                if from_obj == "": # No parameter
+                    if from_fluent in self.unpara_action_names: # Unparameterized action fluent
+                        # Add connection between action and node
+                        self.unpara_action_connections.add((from_fluent, to_obj))
+                    continue # Unparameterized state fluent
+                elif from_fluent in self.para_state_names: # Parameterized state fluent
+                    # Add connection between two nodes
+                    self.para_state_connections.add((from_obj, to_obj)) 
+                elif from_fluent in self.para_action_names: # Parameterized action fluent
+                    # Add connection between the action+node to node
+                    self.para_action_connections.add((to_obj, from_obj, from_fluent))  
 
         self.state_object_names = set(self.para_state_of_objects.keys())  # Obvious
         self.action_object_names = set(self.para_action_of_objects.keys())  # Obvious
@@ -422,6 +417,7 @@ class InstanceParser(object):
         for k, obj in enumerate(sorted(self.action_object_names - self.state_object_names)):
             self.extended_node_dict[obj] = k + len(self.state_object_names)
         self.fluent_nodes = list(range(len(self.node_dict)))
+        
         # Vishal Start: Add new Nodes for non-fluents and gnd objects
         offset = len(self.node_dict)
         k = 0
@@ -497,23 +493,21 @@ class InstanceParser(object):
 
         self.num_graph_action = 1  # The no operation action (directly acts on the graph)
         self.num_parameter_actions = 0
-        self.nf_features = [None] * len(self.node_dict)  # NF Feaures for each node
+
+        self.nf_features = [None] * len(self.node_dict)  # NF Features for each node
         # for key, item in self.para_state_of_objects_nf_values.items():
-        for key, item in self.node_dict.items():
-            self.nf_features[item] = self.para_state_of_objects_nf_values[key]  # Assign features for each node
-        # Add unparameterized non fluents to all nodes
-        for i in range(len(self.unpara_nf_values)):
-            for j in range(len(self.nf_features)):
-                self.nf_features[j].append(self.unpara_nf_values[i])
+        for key, i in self.node_dict.items():
+            self.nf_features[i] = self.para_state_of_objects_nf_values[key]  # Assign features for each node
+        if len(self.nf_features) > 0 and self.nf_features[0] is not None:
+            self.nonfluent_feature_dims = len(self.nf_features[0])
+        else:
+            self.nonfluent_feature_dims = 0
+        self.graph_nonfluent_feature_dims = len(self.unpara_nf_values)
 
         self.fluent_state_dict = {}
         for i, sn in enumerate(sorted(self.para_state_names)):
             self.fluent_state_dict[sn] = i  # State to index
-        self.graph_f_features = []
-        try:
-            self.nonfluent_feature_dims = len(self.nf_features[0])
-        except IndexError as e:
-            self.nonfluent_feature_dims = 0
+
         self.num_graph_action = len(self.unpara_action_names) + 1  # No-operation + unparametrized actions
         self.action_template_to_num = {}  # Action template to number mapping
         for k, tp in enumerate(sorted(self.unpara_action_names)):
@@ -530,15 +524,18 @@ class InstanceParser(object):
         self.detailed_action = {}
 
         # To see if any of the action of this type affects something
-        self.action_affects = {self.action_template_to_num[i]:False for i in self.action_template_to_num.keys()}
+        #self.action_affects = {self.action_template_to_num[i]:False for i in self.action_template_to_num.keys()}
+        self.action_affects = {i: False for i in self.action_template_to_num.values()}
         
-        for st, ob, ac in sorted(self.para_action_connections):  # ToObj, FromObj,FromVar
+        for node, arg, action_template in sorted(self.para_action_connections):  # ToObj, FromObj, FromVar
             try:
-                action_num = self.action_to_num[ac + '(' + ob + ')']
+                ground_action = action_template + '(' + arg + ')'
+                action_num = self.action_to_num[ground_action]
             except KeyError as e:
+                # Ground action not found
                 continue
-            template_num = self.action_template_to_num[ac]
-            node_num = self.node_dict[st]
+            template_num = self.action_template_to_num[action_template]
+            node_num = self.node_dict[node]
             self.action_affects[template_num] = True
             if not my_config.remove_dbn:
                 if action_num not in self.detailed_action.keys():
@@ -550,7 +547,7 @@ class InstanceParser(object):
                     self.detailed_action[action_num] = (template_num, set(), [])
 
             if len(self.detailed_action[action_num][2]) == 0:
-                for o in ob.split(","):
+                for o in arg.split(","):
                     self.detailed_action[action_num][2].append(self.node_dict[o])
         self.detailed_action[0] = (0, set(), [])  # Unparameter action details
         for k in sorted(self.action_to_num.keys()):
@@ -567,11 +564,10 @@ class InstanceParser(object):
         for action_template, _, _ in self.detailed_action.values():
             self.num_types_action = max(self.num_types_action, action_template)
         self.num_types_action += 1
+        self.num_actions = len(self.detailed_action) # len(list(self.detailed_action.keys()))
 
         # Building adjacency lists
         self.build_adjacency_lists()
-        if my_config.fc_adjacency:
-            self.build_fc_adjacency_lists()
 
         self.extended_detailed_action = {}
         for k in sorted(self.action_to_num.keys()):
@@ -591,20 +587,16 @@ class InstanceParser(object):
                 self.action_template_to_num[action_template], self.extended_node_dict[action_obj], -1)
         self.extended_detailed_action[0] = (0, -1)
 
+        self.action_to_num['noop()'] = 0
+        
         print("Graph built")
 
-    def get_num_to_action(self):
-        return self.num_to_action
-
-    def build_fc_adjacency_lists(self):
-        # pdb.set_trace()
-        pass
 
     def build_adjacency_lists(self):
         extra_adj = 1
         if my_config.add_separate_adj:
-            # Last 2 are extra adj. -2 is for DBN edges and -1 for (x,y) to x and y each
-            extra_adj = 3
+            # Last 2 are extra layers. -2 is for DBN edges and -1 for (x,y) to x and y each
+            extra_adj += 2
         if my_config.add_edge_type:
             extra_adj += self.max_arity
         self.adjacency_lists = [{} for _ in range(len(
@@ -763,80 +755,68 @@ class InstanceParser(object):
                             self.unpara_fluents.add(state_var_ob)
                             continue
 
+        self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents)
+        self.graph_fluent_feature_dims = len(self.unpara_state_names)
+
         if my_config.split_dbn:
+            # Split edge type layers
             dbn_edge_types = []
-            for conn in self.para_state_connections:
-                start, end = conn
+            for (start, end) in self.para_state_connections:
+                # Edge between two types of nodes
                 start_type = tuple([self.object_name_to_type[x] for x in start.split(",")])
                 end_type = tuple([self.object_name_to_type[x] for x in end.split(",")])
                 if (start_type, end_type) not in dbn_edge_types:
                     dbn_edge_types.append((start_type, end_type))
             dbn_edge_types = sorted(dbn_edge_types)
+            # Dict of edge types to index
             self.dbn_edge_types_to_idx = {}
             for i, x in enumerate(dbn_edge_types):
                 self.dbn_edge_types_to_idx[x] = i
-            print("DBN Edge types:", self.dbn_edge_types_to_idx)            
-            original_num_adj = len(self.adjacency_lists)
+            print("DBN Edge types:", self.dbn_edge_types_to_idx)    
+            # Add new layer for each type
+            offset = len(self.adjacency_lists)
             for _ in range(len(self.dbn_edge_types_to_idx)):
                 self.adjacency_lists.append({k: [] for k in self.adjacency_lists[0].keys()})
-
-            for conn in self.para_state_connections:
-                start, end = conn
+            for (start, end) in self.para_state_connections:
+                # Add a type edge for each node edge with this type
                 start_type = tuple([self.object_name_to_type[x] for x in start.split(",")])
                 end_type = tuple([self.object_name_to_type[x] for x in end.split(",")])
-                offset = self.dbn_edge_types_to_idx[(start_type, end_type)]
-                self.adjacency_lists[original_num_adj+offset][self.node_dict[start]].append(self.node_dict[end])
+                idx = self.dbn_edge_types_to_idx[(start_type, end_type)]
+                self.adjacency_lists[offset+idx][self.node_dict[start]].append(self.node_dict[end])
 
-        if my_config.heuristics:
-            self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents) + len(my_config.heuristics)
-        else:
-            self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents)
-
+        # Add adjacency lists of object nodes
         for i in range(1, len(self.action_template_to_num.keys()) + 1):
             self.extended_adjacency_lists[i] = {k: [] for k in range(len(self.object_names))}
         for i in range(len(self.object_names)):
             if i not in self.extended_adjacency_lists[0].keys():
                 self.extended_adjacency_lists[0][i] = []
 
-        for a, b, c in sorted(self.para_action_connections):
-            if self.extended_node_dict[b] not in self.extended_adjacency_lists[self.action_template_to_num[c]].keys():
-                self.extended_adjacency_lists[self.action_template_to_num[c]][self.extended_node_dict[b]] = [
-                    self.extended_node_dict[a]]
+
+        for node, arg, action_template in sorted(self.para_action_connections):
+            ext_node = self.extended_node_dict[node]
+            ext_arg = self.extended_node_dict[arg]
+            template_adj_list = self.extended_adjacency_lists[self.action_template_to_num[action_template]]
+            # Edge from arg to node
+            if ext_arg not in template_adj_list.keys():
+                template_adj_list[ext_arg] = [ext_node]
             else:
-                self.extended_adjacency_lists[self.action_template_to_num[c]][self.extended_node_dict[b]].append(
-                    self.extended_node_dict[a])
+                template_adj_list[ext_arg].append(ext_node)
 
-        if my_config.merged_model:
-            pass
-            # self.adjacency_lists = [self.adjacency_lists[0]] + self.adjacency_lists[-self.max_arity:]
-        elif my_config.remove_dbn and my_config.add_edge_type:
-            self.adjacency_lists = self.adjacency_lists[-self.max_arity:]
-        elif my_config.use_only_first_adj:
-            self.adjacency_lists = [self.adjacency_lists[0]]
+        if not my_config.merged_model:
+            if my_config.remove_dbn and my_config.add_edge_type:
+                # Remove edge type layers
+                self.adjacency_lists = self.adjacency_lists[-self.max_arity:]
+            elif my_config.use_only_first_adj:
+                self.adjacency_lists = [self.adjacency_lists[0]]
 
-    def get_adjacency_list(self):
-        return self.adjacency_lists
-
-    def get_extended_adjacency_list(self):
-        return self.extended_adjacency_lists
-
-    def get_num_adjacency_list(self):
-        return len(self.adjacency_lists)
-
-    def get_fluent_features(self, state):  # Given a vector of the state, build feature vector for each fluents
-        f_features = np.array([[0 for i in range(self.fluent_feature_dims)] for _ in
-                    range(len(self.node_dict))], dtype="float32")  # For all fluents for all possible vertices in the dbn
+    def get_fluent_features(self, state: tuple) -> list:  # Given a vector of the state, build feature vector for each fluents
+        # For all fluents for all possible nodes in the dbn
+        f_features = [[0] * self.fluent_feature_dims for _ in range(len(self.node_dict))]  
 
         if len(self.unpara_fluents) != 0:
             for (i, st) in enumerate(sorted(self.unpara_fluents)):
                 var_num = self.state_to_num[st]
                 f_features[:, -i - 1] = state[var_num]
-
-        if my_config.heuristics:
-            k = len(self.unpara_fluents)
-            h = self.planner_wrapper.compute_heuristics(state)
-            for (i, name) in enumerate(my_config.heuristics):
-                f_features[:, -i - 1 - k] = h[i]
 
         for st in self.para_state_names:  # For each fluent
             for node in self.state_object_names:  # For each parameter of the fluent (a vertex in the graph - rememberd dbn)
@@ -852,53 +832,12 @@ class InstanceParser(object):
 
         return f_features
 
-    def get_numeric_unary_nf_features(self, state):
-        return self.para_state_of_objects_numeric_nf_values
-
-    def get_graph_fluent_features(self, state):
+    def get_graph_fluent_features(self, state: tuple):
         gf = []
         for key, i in self.state_to_num.items():
             if key in self.unpara_state_names:  # If unparametrized fluents , append it to the graph embedding
                 gf.append(state[i])
-
-        if my_config.heuristics:
-            h = self.planner_wrapper.compute_heuristics(state)
-            gf.extend(h)
-
         return gf
-
-    def get_feature_dims(self):
-        return self.fluent_feature_dims, self.nonfluent_feature_dims
-
-    def get_num_actions(self):
-        return len(list(self.detailed_action.keys()))
-
-    def get_action_details(self):
-        return self.detailed_action
-
-    def get_extended_action_details(self):
-        return self.extended_detailed_action
-
-    def get_nf_features(self):
-        return self.nf_features
-
-    def get_num_action_nodes(self):  # Number of nodes corresponding to state variable tuples
-        return len(self.extended_node_dict) - len(self.node_dict)
-
-    def get_num_nodes(self):
-        return self.num_nodes
-
-    def get_num_graph_fluents(self):
-        return len(list(self.unpara_state_names)) + self.get_num_heuristics()
-
-    def get_num_heuristics(self):
-        return len(my_config.heuristics) if my_config.heuristics else 0
-
-    def get_num_type_actions(self):
-        return self.num_types_action
-
-    def get_action_templates(self):
-        return self.action_template_to_num.keys()
 
     def get_attr(self, attr):
         if attr not in self.__dict__.keys():
@@ -1273,30 +1212,6 @@ class InstanceParser(object):
     def get_node_dict(self):
         return self.node_dict
 
-    def get_expected_next_state_cpt(self, state, action):
-        # Make next state and call get_processed input to get next
-        next_state = np.array(state, dtype=np.float32)
-        num_actions = self.get_num_actions()
-        actions = [0] * num_actions
-        actions[action] = 1
-        reward = self.reward_formula(state, actions)
-        for (i, node) in enumerate(state):
-            # next_state[i] = self.eval_formula(self.formulae[i], state, actions)
-            next_state[i] = self.formulae[i](state, actions)
-
-        return next_state, reward
-
-    def get_transition_prob(self, state, action, next_state):
-        prob = 1.0
-        bernoulli_probs, _ = self.get_expected_next_state_cpt(state, action)
-
-        for i, state_var in enumerate(next_state):
-            if state_var == 1:
-                prob *= (bernoulli_probs[i])
-            else:
-                prob *= (1 - bernoulli_probs[i])
-        return prob
-
     def parse_formula(self, formula, state_var, flag):
         self.formulae[self.state_to_num[state_var]] = self.get_partial_formula(formula)
         self.reward_formula = self.get_partial_formula(self.reward_str)
@@ -1579,9 +1494,3 @@ class InstanceParser(object):
                 to_remove = False
         # print(len(stack))
         return stack.pop()
-
-    def get_max_reward(self):
-        return self.reward_max
-
-    def get_min_reward(self):
-        return self.reward_min

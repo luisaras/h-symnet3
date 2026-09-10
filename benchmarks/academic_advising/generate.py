@@ -107,7 +107,7 @@ def build_courses_and_prereqs(num_levels, num_courses, num_prereqs):
     return all_courses, prereqs, program_reqs
 
 
-def build_rddl(instance_name, courses, prereqs, program_reqs, horizon):
+def build_rddl(instance_name, courses, prereqs, program_reqs, type, horizon):
     nf_name = f"nf_{instance_name}"
     lines = []
     lines.append(f"non-fluents {nf_name} {{")
@@ -145,7 +145,7 @@ def _take_action(course):
     return f"take-{course}"
 
 
-def build_ppddl(instance_name, courses, prereqs, program_reqs, horizon):
+def build_ppddl(instance_name, courses, prereqs, program_reqs, type, horizon):
     domain_name = "academic_advising_ppddl"
 
     if program_reqs:
@@ -196,7 +196,7 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, horizon):
         plist = prereqs[c]
         k = len(plist)
 
-        if k == 0:
+        if k == 0: # First level; no prerequisites.
             d.append(f"  (:action {_take_action(c)}")
             d.append("    :parameters ()")
             d.append(f"    :precondition (not (passed {c}))")
@@ -256,7 +256,9 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, horizon):
 # --------------------------------------------------------------------------
 # Instance generation + CLI
 # --------------------------------------------------------------------------
-def build_instances(instance_name, num_levels, num_courses, num_prereqs, horizon):
+PARAMS = "num_levels num_courses num_prereqs type horizon"
+
+def build_instances(instance_name, num_levels, num_courses, num_prereqs, type, horizon):
     courses, prereqs, program_reqs = build_courses_and_prereqs(
         num_levels, num_courses, num_prereqs
     )
@@ -281,34 +283,31 @@ def validate_args(dataset, args):
             return True
     return True
 
-def create_instances(out_dir, instance_name, num_levels, num_courses, num_prereqs, type, horizon):
-    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, num_levels, num_courses, num_prereqs, horizon)
-
-    os.makedirs(out_dir, exist_ok=True)
-    rddl_file = os.path.join(out_dir, instance_name + ".rddl")
-
-    out_dir = out_dir.replace("rddl", "ppddl")
-    os.makedirs(out_dir, exist_ok=True)
-    ppddl_file = os.path.join(out_dir, instance_name + ".ppddl")
-
-
+def create_instances(rddl_dir, instance_name, *args):
+    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, *args)
+    # File names
+    rddl_file = os.path.join(rddk_dir, instance_name + ".rddl")
+    ppddl_dir = rddl_dir.replace("rddl", "ppddl")
+    ppddl_file = os.path.join(ppddl_dir, instance_name + ".ppddl")
+    # Write RDDL
+    os.makedirs(rddl_dir, exist_ok=True)
     with open(rddl_file, "w") as f:
         f.write(rddl)
+    print("Created file: " + rddl_file)
+    # Write PPDDL
+    os.makedirs(ppddl_dir, exist_ok=True)
     with open(ppddl_file, "w") as f:
         f.write(ppddl_domain + "\n")
         f.write(ppddl_problem)
-
-    print("Created file: " + rddl_file)
     print("Created file: " + ppddl_file)
 
-
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    n_args = 6
+    n_args = PARAMS.split() + 2 # plus out_dir and instance_name
+    args = sys.argv[1:] # Remove filename
     if len(args) == n_args + 1:
         seed = args.pop(n_args)
         rng.seed(int(seed))
     if len(args) != n_args:
-        print("Wrong number of args. Usage: out-dir instance_name num_levels num_courses num_prereqs type horizon [seed]")
+        print("Wrong number of args. Usage: out_dir instance_name " + params + " [seed]")
         sys.exit(-1)
     create_instances(*args)

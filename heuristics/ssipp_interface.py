@@ -10,6 +10,10 @@ def weak_ref_to(obj):
 		return obj
 	return proxy(obj)
 
+
+def num_heuristic_features(heuristic_names):
+	return len(heuristic_names)
+
 class PlannerExtensions(object):
 	"""Wrapper to hold references to SSiPP and MDPSim modules, and references
 	to the relevant loaded problems (like the old ModuleSandbox). Mostly
@@ -18,6 +22,7 @@ class PlannerExtensions(object):
 
 	heur_map = {
 	  "lmc": "lm-cut",
+	  "lmc3": "lm-cut3",
 	}
 
 	def __init__(self,
@@ -67,7 +72,7 @@ class Evaluator:
 		#cuts = self.cutter.get_action_cuts(ssipp_state)
 		#print("=========== CUTS: " + str(cuts))
 		#return self.evaluator.state_value(ssipp_state)
-		return self.heuristic.value(ssipp_state)
+		return [self.heuristic.value(ssipp_state)]
 
 class Cutter:
 	# ssipp appends -prob-j to an action name to signify that it is the j-th
@@ -101,7 +106,19 @@ class Cutter:
 		return self.cut_cache[ssipp_state]
 
 
-class LMCutDataGenerator():
+def strip_parens(thing):
+    """Convert string of form `(foo bar baz)` to `foo bar baz` (i.e. strip
+    leading & trailing parens). More complicated than it should be b/c it does
+    safety checks to catch my bugs :)"""
+    assert len(thing) > 2 and thing[0] == "(" and thing[-1] == ")", \
+        "'%s' does not look like it's surrounded by parens" % (thing,)
+    stripped = thing[1:-1]
+    assert "(" not in stripped and ")" not in stripped, \
+        "parens in '%s' aren't limited to start and end" % (thing,)
+    return stripped
+
+
+class LMCutDataGenerator:
 	"""Adds 'this is in a disjunctive cut'-type flags to propositions."""
 	extra_dim = 3
 	dim_names = ['in-any-cut', 'in-singleton-cut', 'in-last-cut']
@@ -120,6 +137,8 @@ class LMCutDataGenerator():
 		out_vec = np.zeros((len(cstate.acts_enabled), self.extra_dim))
 		ssipp_state = cstate.to_ssipp(self.planner_exts)
 		cuts = self.cutter.get_action_cuts(ssipp_state)
+
+	def get_cuts_heur(cuts):
 		in_unary_cut = set()
 		in_any_cut = set()
 		for cut in cuts:
@@ -147,3 +166,32 @@ class LMCutDataGenerator():
 				out_vec[idx][self.IN_LAST_CUT] = 1
 		return out_vec
 		
+
+class ActionCountDataGenerator:
+    """Counts number of times each action has been executed so far."""
+    extra_dim = 1
+    dim_name = 'action_count'
+    dim_names = [dim_name]
+    requires_memory = True
+
+    def __init__(self, problem_meta):
+        self.problem_meta = weak_ref_to(problem_meta)
+
+    def get_extra_data_with_memory(self, this_cstate, prev_cstate, prev_act,
+                                   is_init_cstate):
+        if is_init_cstate:
+            return np.zeros((len(this_cstate.acts_enabled), self.extra_dim))
+        # FIXME: this is a really dumb way to do things; I should be keeping
+        # track of this separately & passing it into ALL memory-based
+        # functions. Also I should keep aux_data as 2D instead of 1D, since
+        # that's less error-prone. Fix this if I ever need to do it again.
+        extra_dim = max(prev_cstate._aux_data_interp_to_id.values()) + 1
+        old_aux_reshaped = prev_cstate.aux_data.reshape((-1, extra_dim))
+        prev_dim_id = prev_cstate._aux_data_interp_to_id[self.dim_name]
+        # get previous count vector & increment relevant count by 1
+        aux_data_1d = old_aux_reshaped[:, prev_dim_id].copy()
+        act_id = self.problem_meta.act_unique_id_to_index(
+            prev_act.unique_ident)
+        aux_data_1d[act_id] += 1
+        aux_data_2d = aux_data_1d.reshape((-1, 1))
+        return aux_data_2d

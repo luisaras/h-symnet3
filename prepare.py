@@ -12,7 +12,7 @@ from prost.dataset_builder import create_dataset
 IPPC=["academic_advising_ippc", "crossing_traffic", "game_of_life", "navigation", "skill_teaching", "sysadmin", "tamarisk", "traffic", "wildfire"]
 LR=["academic_advising_chain", "academic_advising", "pizza_delivery", "pizza_delivery_grid", "pizza_delivery_windy", "wall", "stochastic_navigation", "stochastic_wall corridor"]
 EXTRA=["recon", "triangle_tireworld", "elevators"]
-TEST=["navigation, academic_advising, exploding_blocks"]
+TEST=["navigation", "academic_advising", "exploding_blocks"]
 
 def parse_arguments():
 	formatter = lambda prog: argparse.ArgumentDefaultsHelpFormatter(
@@ -62,17 +62,11 @@ def generate_instances(first_inst, last_inst, domains, skip=False):
 
 def preprocess_rddl(first_inst, last_inst, domains, skip=False):
 	print("Generate DBN files.")
-	arg = "skip" if skip else ""
-	instances = [str(i) for i in range(first_inst, last_inst+1)]
-	script = f"""
-	echo $(pwd)
-	for d in {" ".join(domains)}; do
-		for i in {" ".join(instances)}; do
-			./parse_instance.sh $d $i {arg}
-		done
-	done
-	"""
-	run_symnet3_env(["bash", "-c", script])
+	cmd = ["python3", "parse_instances.py"] + domains
+	cmd += ["-i", str(first_inst), str(last_inst)]
+	if skip:
+		cmd += ["--skip"]
+	run_symnet3_env(cmd)
 
 
 def generate_trajectories(first_inst, last_inst, domains, skip=False):
@@ -92,7 +86,7 @@ def generate_trajectories(first_inst, last_inst, domains, skip=False):
 		create_dataset(d, first_inst, last_inst, prost_log, save_folder)
 
 
-def compute_heuristics(first_inst, last_inst, domains, skip):
+def precompute_heuristics(first_inst, last_inst, domains, skip=False):
 	for d in domains:
 		save_folder = os.path.join("data", "heuristics", d)
 		os.makedirs("data/heuristics/" + d, exist_ok=True)
@@ -126,9 +120,9 @@ if __name__ == "__main__":
 	if args.plan:
 		generate_trajectories(args.ins[0], args.ins[1], domains, skip=False)
 	if args.heuristics: 
-		compute_heuristics(args.ins[0], args.ins[1], domains, skip=False)
+		precompute_heuristics(args.ins[0], args.ins[1], domains, skip=False)
 	if args.run_all:
 		generate_instances(args.ins[0], args.ins[1], domains)
 		preprocess_rddl(args.ins[0], args.ins[1], domains, skip=True)
 		generate_trajectories(args.ins[0], args.ins[1], domains, skip=True)
-		compute_heuristics(args.ins[0], args.ins[1], domains, skip=True)
+		precompute_heuristics(args.ins[0], args.ins[1], domains, skip=True)

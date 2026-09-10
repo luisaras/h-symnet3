@@ -1,1 +1,1 @@
-from gym.envs.rddl.RDDL import RDDLEnv
+from gym.envs.rddl.env import RDDLEnv

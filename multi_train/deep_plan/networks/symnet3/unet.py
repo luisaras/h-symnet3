@@ -12,7 +12,7 @@ from spektral.layers.convolutional.gnn_cnn_style import GNNCNNStyle
 # https://github.com/HongyangGao/Graph-U-Nets/blob/master/ops.py
 
 class GATConvLayer(tf.keras.layers.Layer):
-    def __init__(self, channels, filter_size, attn_heads, activation, dropout_rate=0, initializer=None, conv_type="GAT", num_edge_types=None, use_shared_gat=False):
+    def __init__(self, channels, filter_size, attn_heads, activation, dropout_rate=0, initializer="glorot_uniform", conv_type="GAT", num_edge_types=None, use_shared_gat=False):
         super(GATConvLayer, self).__init__()
 
         self.channels = channels
@@ -23,13 +23,7 @@ class GATConvLayer(tf.keras.layers.Layer):
         self.conv_type = conv_type
         self.num_edge_types = num_edge_types
         self.use_shared_gat = use_shared_gat
-
-        if initializer is None:
-            self.initializer = tf.keras.initializers.GlorotUniform()
-            # self.initializer = tf.ones_initializer()
-        else:
-            self.initializer = initializer
-
+        self.initializer = initializer
         self.gat_layers = []
         if self.filter_size>1 and self.use_shared_gat:
             first_gat = GraphAttention(channels=self.channels, attn_heads=self.attn_heads, concat_heads=True, dropout_rate=self.dropout_rate, activation=None, use_bias=False, kernel_initializer=self.initializer, num_edge_types=self.num_edge_types)
@@ -54,7 +48,7 @@ class GATConvLayer(tf.keras.layers.Layer):
         return X
 
 class GATConvLayerDistance(tf.keras.layers.Layer):
-    def __init__(self, channels, filter_size, attn_heads, activation, dropout_rate=0, initializer=None, conv_type="GAT", num_edge_types=None, use_shared_gat=False, concat_last_gat=True, return_attn_coef=False):
+    def __init__(self, channels, filter_size, attn_heads, activation, dropout_rate=0, initializer="glorot_uniform", conv_type="GAT", num_edge_types=None, use_shared_gat=False, concat_last_gat=True, return_attn_coef=False):
         super(GATConvLayerDistance, self).__init__()
 
         self.channels = channels
@@ -66,12 +60,7 @@ class GATConvLayerDistance(tf.keras.layers.Layer):
         self.num_edge_types = num_edge_types
         self.use_shared_gat = use_shared_gat
         self.concat_last_gat = concat_last_gat
-
-        if initializer is None:
-            self.initializer = tf.keras.initializers.GlorotUniform()
-            # self.initializer = tf.ones_initializer()
-        else:
-            self.initializer = initializer
+        self.initializer = initializer
         self.return_attn_coef = return_attn_coef
         self.gat_layers = []
         if self.filter_size>1 and self.use_shared_gat:
@@ -106,9 +95,9 @@ class GraphPool(tf.keras.layers.Layer):
         self.k_value = k_value
         self.sigmoid_gating = sigmoid_gating
         self.gating_op = K.sigmoid if self.sigmoid_gating else K.tanh
-        self.kernel_initializer = initializers.get(kernel_initializer)
-        self.kernel_regularizer = regularizers.get(kernel_regularizer)
-        self.kernel_constraint = constraints.get(kernel_constraint)
+        self.kernel_initializer = kernel_initializer
+        self.kernel_regularizer = kernel_regularizer
+        self.kernel_constraint = kernel_constraint
 
     def build(self, input_shape):
         self.F = input_shape[0][-1]

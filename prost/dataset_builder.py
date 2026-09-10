@@ -39,6 +39,7 @@ def create_dataset(domain, first_instance, last_instance, prost_log, save_folder
 				f.write(res+"\n")
 
 		f.close()
+	print("Built dataset for domain " + domain)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()

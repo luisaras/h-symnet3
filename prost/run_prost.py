@@ -1,7 +1,10 @@
 #!/bin/python3
 import sys, subprocess, os, argparse, shutil, copy
-from concurrent.futures import ProcessPoolExecutor
+import logging, traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from rddl_server import RDDLServer
+
+VERBOSE = False
 
 def parse_arguments():
 	formatter = lambda prog: argparse.ArgumentDefaultsHelpFormatter(
@@ -32,6 +35,8 @@ def parse_arguments():
 		default=0)
 	parser.add_argument("-f", "--prost_folder", help="PROST root folder",
 		default=None)
+	parser.add_argument("-v", "--verbose", help="print log on screen",
+		action="store_true")
 	parser.add_argument("--skip", help="skip instance if dataset already exists",
 		action="store_true")
 	args = parser.parse_args()
@@ -51,14 +56,14 @@ def parse_arguments():
 
 class PROST:
 
-	def __init__(self, prost_root="../../prost", port_shift=0, cwd='.'):
+	def __init__(self, prost_root="../../prost", port_shift=0, cwd='.', verbose=False):
 		self.root = prost_root
 		self.port = str(2323 + port_shift)
 		self.cwd = cwd
+		self.verbose = verbose
 
 	def run(self, instance_name, log_file=None):
 		cmd = ["python3", self.root + "/prost.py", instance_name, "-p", self.port, "[Prost -s 1 -se [IPC2014]]"]
-		print(cmd)
 		try:
 			process = subprocess.Popen(cmd,
 				stdout=subprocess.PIPE,    # Capture stdout
@@ -69,7 +74,7 @@ class PROST:
 			)
 			output = ""
 			for line in process.stdout:
-				print(line, end="")    # Show on screen instantly
+				if self.verbose: print(line, end="")    # Show on screen instantly
 				output += line  # Save to list
 			process.wait()
 			if log_file:
@@ -135,7 +140,7 @@ def run_new_server(args, cwd=None):
 		return
 	print(f"Running server in {args.domain_folder}, port {args.port}")
 	server = RDDLServer(args.prost_folder, args.domain_folder, args.rounds, args.port)
-	prost = PROST(args.prost_folder, args.port, cwd)
+	prost = PROST(args.prost_folder, args.port, cwd, args.verbose)
 	with server:
 		if len(args.instances) > 1 or args.workers > 1:
 			# Run num_instances instances
@@ -159,6 +164,15 @@ def run_worker(args_i):
 	run_new_server(args_i, folder)
 	shutil.rmtree(folder)
 
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(processName)s - %(levelname)s - %(message)s"
+)
+
+def init_worker():
+    # This runs once when each worker process starts
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 if __name__ == "__main__":
 	args = parse_arguments()
@@ -169,7 +183,7 @@ if __name__ == "__main__":
 			set_domain(args, d)
 			run_new_server(args)
 	else:
-		print("Running PROST in parallel...")
+		print(f"Running PROST with {args.workers} async workers...")
 		worker_args = []
 		for d in args.domains:
 			set_domain(args, d)
@@ -177,9 +191,16 @@ if __name__ == "__main__":
 				args_i = copy.copy(args)
 				args_i.instances = [i]
 				worker_args.append(args_i)
-		print(worker_args)
 		if len(worker_args) > 1:
-			with ProcessPoolExecutor(max_workers=args.workers) as executor:
-				executor.map(run_worker, worker_args)
+			with ProcessPoolExecutor(max_workers=args.workers, initializer=init_worker) as executor:
+				futures = [executor.submit(run_worker, arg) for arg in worker_args]
+				for i, future in enumerate(as_completed(futures)):
+					try:
+						future.result()
+					except Exception as exc:
+						logging.error(f"Task {i} generated an exception: {exc}")
+						traceback.print_exc()
+						sys.exit(1)
 		else: # Only one instance
 			run_worker(worker_args[0])
+

@@ -264,6 +264,7 @@ def build_ppddl(instance_name, computers, incoming, prob, penalty, horizon,
 # --------------------------------------------------------------------------
 # Instance generation + CLI
 # --------------------------------------------------------------------------
+PARAMS = "num_computers num_neighbors reboot_prob horizon"
 
 def build_instances(instance_name, n, k, p, horizon):
     computers, incoming = generate_topology(n, k)
@@ -276,28 +277,31 @@ def build_instances(instance_name, n, k, p, horizon):
 def validate_args(dataset, args):
     return True
 
-def create_instances(out_dir, instance_name, num_computers, num_neighbors, reboot_prob, horizon):
-    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, num_computers, num_neighbors, reboot_prob, horizon)
-    os.makedirs(out_dir, exist_ok=True)
-    rddl_file = os.path.join(out_dir, instance_name + ".rddl")
-    out_dir = out_dir.replace("rddl", "ppddl")
-    os.makedirs(out_dir, exist_ok=True)
-    ppddl_file = os.path.join(out_dir, instance_name + ".ppddl")
+def create_instances(rddl_dir, instance_name, *args):
+    rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, *args)
+    # File names
+    rddl_file = os.path.join(rddk_dir, instance_name + ".rddl")
+    ppddl_dir = rddl_dir.replace("rddl", "ppddl")
+    ppddl_file = os.path.join(ppddl_dir, instance_name + ".ppddl")
+    # Write RDDL
+    os.makedirs(rddl_dir, exist_ok=True)
     with open(rddl_file, "w") as f:
         f.write(rddl)
+    print("Created file: " + rddl_file)
+    # Write PPDDL
+    os.makedirs(ppddl_dir, exist_ok=True)
     with open(ppddl_file, "w") as f:
         f.write(ppddl_domain + "\n")
         f.write(ppddl_problem)
-    print("Generated file: " + rddl_file)
-    print("Generated file: " + ppddl_file)
-
+    print("Created file: " + ppddl_file)
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    if len(args) == 7:
-        seed = args.pop(6)
+    n_args = PARAMS.split() + 2 # plus out_dir and instance_name
+    args = sys.argv[1:] # Remove filename
+    if len(args) == n_args + 1:
+        seed = args.pop(n_args)
         rng.seed(int(seed))
-    if len(args) != 6:
-        print("Wrong number of args. Usage: out-dir instance_name num_computers num_neighbors prob horizon [seed]")
+    if len(args) != n_args:
+        print("Wrong number of args. Usage: out_dir instance_name " + params + " [seed]")
         sys.exit(-1)
     create_instances(*args)

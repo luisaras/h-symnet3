@@ -1,38 +1,20 @@
-"""Train a policy network with supervision from a planner and hard negative
-mining."""
-
-from collections import Counter
-from enum import Enum
-from functools import lru_cache
-from itertools import repeat
-import os
-from warnings import warn
-
-import joblib
+import os, sys, signal
 import numpy as np
 import rpyc
-import tensorflow as tf
-import tqdm
-
-from copy import deepcopy
 import ctypes
 import getpass
-from multiprocessing import Process
-import signal
-import sys
-from time import sleep, time
 import uuid
 import weakref
-
-from rpyc.utils.server import OneShotServer
-
-from heuristics.ssipp_interface import PlannerExtensions
 import builtins
-import os
+from copy import deepcopy
+from multiprocessing import Process
+from time import sleep, time
 try:
     import kernprof
 except ImportError:
     kernprof = None
+
+from heuristics.ssipp_interface import PlannerExtensions
 
 
 def _has_profile():
@@ -72,7 +54,11 @@ def make_problem_service(config):
             self.initialised = True
 
         def exposed_compute_heuristics(self, atoms):
-            return self.p.compute_heuristics(atoms)
+            try:
+                return self.p.compute_heuristics(atoms)
+            except Exception as e:
+                print(e)
+                return None
 
         def on_connect(self, conn):
             # we let the initialiser run later, so that it can execute
@@ -98,7 +84,7 @@ def start_server(service_args, socket_path):
     # avoid import cycle
     parent_death_pact(signal=signal.SIGKILL)
     new_service = make_problem_service(service_args)
-    server = OneShotServer(new_service, socket_path=socket_path)
+    server = rpyc.utils.server.OneShotServer(new_service, socket_path=socket_path)
     print('Child process starting OneShotServer %s' % server)
     try:
         server.start()

@@ -12,7 +12,6 @@ import numpy as np
 from datetime import datetime
 
 import my_config
-from env_instance_wrapper import EnvInstanceWrapper
 
 lock = multiprocessing.Lock()
 
@@ -20,27 +19,29 @@ curr_dir_path = os.path.dirname(os.path.realpath(__file__))
 network_path = os.path.abspath(os.path.join(curr_dir_path,"networks"))
 if network_path not in sys.path:
     sys.path = [network_path] + sys.path
+parent_dir_path = os.path.abspath(os.path.join(curr_dir_path,"..",".."))
+if parent_dir_path not in sys.path:
+    sys.path = [parent_dir_path] + sys.path
 
-import tensorflow as tf
 from policy_monitor import PolicyMonitor
 import helper
 from model_factory import ModelFactory
-from supervised_dataset import SupervisedDataset
 
 load_saved_dataset = False
 
 # Performs one network update from the given batch (x, y). 
 # Returns two values the policy loss and the aux loss (None if not enabled).
 # @tf.function
-def train_step(network, x, y, env_index, env_wrapper, loss_fn, optimizer, grad_clip_value, multiplier=0.0):
+def train_step(network, x, y, env_wrapper, loss_fn, optimizer, grad_clip_value, multiplier=0.0):
+    import tensorflow as tf
     if my_config.add_aux_loss:
         with tf.GradientTape() as policynet_tape:
-            policynet_pred, dist_attn_coef = network.policy_prediction(x, env_index, env_wrapper, return_attn_coef=True)
+            policynet_pred, dist_attn_coef = network.policy_prediction(x, env_wrapper, return_attn_coef=True)
             policynet_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)(y, policynet_pred)
             if my_config.use_fluent_for_kl:
-                random_node = tf.constant(random.randint(0, len(env_wrapper.envs[env_index].instance_parser.fluent_nodes)-1), dtype=tf.int32)
+                random_node = tf.constant(env_wrapper.get_random_fluent_node(), dtype=tf.int32)
             else:
-                random_node = tf.constant(random.randint(0, len(env_wrapper.envs[env_index].instance_parser.node_dict)-1), dtype=tf.int32)
+                random_node = tf.constant(env_wrapper.get_random_node(), dtype=tf.int32)
             
             random_heads = tf.constant(random.sample(list(np.arange(0, dist_attn_coef.shape[3])), k=2), dtype=tf.int32)
             attn_coef0 = dist_attn_coef[:,random_node,:,random_heads[0]] # shape-> BXN
@@ -57,7 +58,7 @@ def train_step(network, x, y, env_index, env_wrapper, loss_fn, optimizer, grad_c
 
     else:
         with tf.GradientTape() as policynet_tape:
-            policynet_pred = network.policy_prediction(x, env_index, env_wrapper)
+            policynet_pred = network.policy_prediction(x, env_wrapper)
             policynet_loss = loss_fn(y, policynet_pred)
         grads_of_policynet = policynet_tape.gradient(policynet_loss, network.trainable_variables)
         grads_of_policynet = tf.clip_by_global_norm(grads_of_policynet, grad_clip_value)
@@ -68,6 +69,7 @@ def train_step(network, x, y, env_index, env_wrapper, loss_fn, optimizer, grad_c
 # Trains for the given number of epochs.
 # Each epoch uses the entire dataset of each instance to perform updates.
 def train(model_dir, ckpt_dir, log_file=None):
+    import tensorflow as tf
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
 
@@ -81,40 +83,23 @@ def train(model_dir, ckpt_dir, log_file=None):
         except RuntimeError as e:
             print(e)
 
-    train_instances, N_train_instances, test_instances, N_test_instances, instances = helper.get_instance_names()
-    envs_ = helper.make_envs(instances)
-    #num_nodes_list, num_valid_actions_list, num_graph_fluent_list, num_adjacency_list = helper.get_env_metadata(envs_)
-
+    train_instances, val_instances = helper.get_instance_names()
+    train_envs = helper.make_envs(train_instances)
     print("Envs created.")
-    policynet_optim = tf.keras.optimizers.Adam(lr=my_config.lr)
 
-    args = helper.create_modelfactory_args(policynet_optim=policynet_optim)
-    helper.add_network_args(args, envs_[0], model_dir)
+    policynet_optim = tf.keras.optimizers.Adam(learning_rate=my_config.lr)
+    model_factory = ModelFactory(train_envs[0], policynet_optim=policynet_optim)
 
-    model_factory = ModelFactory(args)
-    env_wrapper = EnvInstanceWrapper(envs_[:N_train_instances])
-
-    network = model_factory.create_network(env_wrapper)
-    network.init_network(env_wrapper, 0)
-    print("Network created.")
-
-    network_copy = model_factory.create_network(env_wrapper)
+    network = model_factory.create_network()
+    network.init_network(train_envs[0])
     policy_monitor = PolicyMonitor(
-        envs=helper.make_envs(test_instances),
+        envs=helper.make_envs(val_instances),
         network=network,
         domain=my_config.domain,
-        instances=instances,
         summary_writer=None,
-        model_factory=model_factory,
-        network_copy=network_copy)
-
-    network.init_network(env_wrapper, 0)
-    policy_monitor.network_copy.init_network(env_wrapper, 0)
-    policy_monitor.copy_params()
+        model_factory=model_factory)
+    policy_monitor.network_copy.init_network(train_envs[0])
     print("Created policy monitor.")
-
-    for e in envs_:
-        e.close()
 
     # Create CheckpointManager
     ckpt_parts = {}
@@ -124,6 +109,7 @@ def train(model_dir, ckpt_dir, log_file=None):
     ckpt_manager = tf.train.CheckpointManager(ckpt, ckpt_dir, 2000)
     model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
 
+    # Load weights
     step = 0
     start_epoch = 0
     if my_config.use_pretrained:
@@ -134,8 +120,9 @@ def train(model_dir, ckpt_dir, log_file=None):
 
     # SUPERVISED TRAINING STARTS
     # Training dataset
+    from supervised_dataset import SupervisedDataset
     batch_size = my_config.batch_size # fixed at 32
-    dataset_ob = SupervisedDataset(train_instances, env_wrapper, batch_size, num_episodes=None)
+    dataset_ob = SupervisedDataset(train_instances, train_envs, batch_size)
     print("Loading datasets.")
 
     # Loss Function
@@ -143,13 +130,11 @@ def train(model_dir, ckpt_dir, log_file=None):
     grad_clip_value = model_factory.grad_clip_value
     best_val_reward = -float('inf')
     best_ckpt = ""
-    ins_log = []
+    ckpt_log = []
     for epoch in range(start_epoch, my_config.train_epochs):
         print("\n\n------Start of epoch %d" % (epoch,))
-        random.shuffle(dataset_ob.instance_order)
-        for ins in dataset_ob.instance_order:
+        for ins, env_index, states, actions in dataset_ob:
             # Get samples from the current instance's dataset
-            env_index, states, actions = dataset_ob.dataset[ins]
             total_size = len(states)
             cur_loc = 0
 
@@ -177,12 +162,12 @@ def train(model_dir, ckpt_dir, log_file=None):
 
                 start_time = time.time()
                 # Each batch_size samples, do an update
-                loss_value, aux_value = train_step(network, x, y, env_index, env_wrapper,
+                loss_value, aux_value = train_step(network, x, y, train_envs[env_index],
                     loss_fn=loss_fn,
                     optimizer=model_factory.policynet_optim,
                     grad_clip_value=grad_clip_value,
                     multiplier=kl_multiplier)
-                ins_log.append((epoch, ins, time.time() - start_time, loss_value))
+                ckpt_log.append((epoch, ins, time.time() - start_time, loss_value))
                 step += 1
                 network.trained_steps.assign(step)
 
@@ -196,11 +181,14 @@ def train(model_dir, ckpt_dir, log_file=None):
         # Validation
         if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
             policy_monitor.copy_params()
-            results, save_path = policy_monitor.eval_once(
-                log_file=log_file, 
-                num_episodes=my_config.num_validation_episodes
-            )
-            val_reward = np.mean(results["total_reward_means"])
+            save_path = model_factory.save_ckpt()
+            time.sleep(5)
+            results = policy_monitor.eval_policy(num_episodes=my_config.num_validation_episodes)
+            if log_file is not None:
+                rewards_str = ",".join([str(mr) for mr in results["creward_means"]])
+                helper.write_content(log_file, f"{model_factory.get_ckpt_num()},{rewards_str}\n")
+            # Log best and current mean total rewards.
+            val_reward = np.mean(results["creward_means"])
             print(f"This checkpoint has a reward of {val_reward}, best is {best_val_reward}.")
             if not my_config.keep_ckpts:
                 if val_reward <= best_val_reward:
@@ -214,17 +202,17 @@ def train(model_dir, ckpt_dir, log_file=None):
                     best_ckpt = save_path
                     print("Deleting previous.")
             best_val_reward = max(best_val_reward, val_reward)
-
+            # Log loss and total rewards.
             with open(save_path + "_losses.csv", 'w') as f:
                 f.write("epoch\tins\ttime\tloss\n")
-                for (e, ins, t, loss) in ins_log:
+                for (e, ins, t, loss) in ckpt_log:
                     f.write(f"{e}\t{ins}\t{t}\t{loss}\n")
             with open(save_path + "_rewards.csv", 'w') as f:
                 f.write("ins\treward\tlength\ttime\n")
-                for (env, rewards_i, lengths_i, times_i) in zip(policy_monitor.envs, results["ep_rewards"], results["ep_lengths"], results["ep_times"]):
-                    for r, l, t in zip(rewards_i, lengths_i, times_i):
-                        f.write(f"{env.instance}\t{r}\t{l}\t{t}\n")
-            ins_log = []
+                for (env, crewards, lengths, times) in zip(policy_monitor.envs, results["ep_crewards"], results["ep_lengths"], results["ep_times"]):
+                    for r, l, t in zip(crewards, lengths, times):
+                        f.write(f"{env.get_instance_num()}\t{r}\t{l}\t{t}\n")
+            ckpt_log = []
 
 if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None
@@ -266,6 +254,8 @@ if __name__ == '__main__':
             my_config.test_instance = ",".join(str(3100+i) for i in range(100))
 
     model_dir, ckpt_dir, log_file = helper.get_model_dir(config_file, create=True)
+    if my_config.restore_config:
+        helper.restore_settings(model_dir)
 
     print("Domain: ", my_config.domain)
     print("Model dir: ", my_config.model_dir)
