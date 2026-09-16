@@ -78,7 +78,7 @@ def weighted_sample_without_replacement(candidates, weights, k):
     return chosen
 
 
-def build_courses_and_prereqs(num_levels, num_courses, num_prereqs):
+def build_courses_and_prereqs(num_levels, num_courses, num_prereqs, num_progreqs, type):
     courses_by_level = {}
     level_of = {}
     all_courses = []
@@ -93,15 +93,19 @@ def build_courses_and_prereqs(num_levels, num_courses, num_prereqs):
     prereqs = {c: [] for c in all_courses}
 
     for lvl in range(2, num_levels + 1):
-        candidates = [c for l in range(1, lvl) for c in courses_by_level[l]]
-        weights = [level_of[c] ** 2 for c in candidates]
+        if type == "xtreme" or type == "chain":
+            candidates = courses_by_level[lvl-1]
+            weights = [1 for c in candidates]
+        else:
+            candidates = [c for l in range(1, lvl) for c in courses_by_level[l]]
+            weights = [level_of[c] ** 2 for c in candidates]
         for c in courses_by_level[lvl]:
             k = rng.randint(1, max(1, num_prereqs))
             prereqs[c] = weighted_sample_without_replacement(candidates, weights, k)
 
     # Program requirements: sampled the same weighted way, from all courses.
     weights_all = [level_of[c] ** 2 for c in all_courses]
-    k = rng.randint(1, max(1, num_prereqs))
+    k = rng.randint(1, max(1, num_progreqs))
     program_reqs = weighted_sample_without_replacement(all_courses, weights_all, k)
 
     return all_courses, prereqs, program_reqs
@@ -123,9 +127,12 @@ def build_rddl(instance_name, courses, prereqs, program_reqs, type, horizon):
         lines.append(f"        PROGRAM_REQUIREMENT({r});")
     # Extreme variant: no cost for taking/retaking courses, only the
     # per-time-step penalty for an incomplete program should drive reward.
-    for c in courses:
-        lines.append(f"        COURSE_COST({c}) = 0.0;")
-        lines.append(f"        COURSE_RETAKE_COST({c}) = 0.0;")
+    if type == "xtreme":
+        for c in courses:
+            lines.append(f"        COURSE_COST({c}) = 0.0;")
+            lines.append(f"        COURSE_RETAKE_COST({c}) = 0.0;")
+            lines.append(f"        PRIOR_PROB_PASS({c}) = -0.95;")
+            lines.append(f"        PRIOR_PROB_PENALTY({c}) = 0.0;")
     lines.append(f"        PROGRAM_INCOMPLETE_PENALTY = -{PROGRAM_INCOMPLETE_PENALTY};")
     lines.append("    };")
     lines.append("}")
@@ -141,8 +148,6 @@ def build_rddl(instance_name, courses, prereqs, program_reqs, type, horizon):
     return "\n".join(lines) + "\n"
 
 
-def _take_action(course):
-    return f"take-{course}"
 
 
 def build_ppddl(instance_name, courses, prereqs, program_reqs, type, horizon):
@@ -192,23 +197,34 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, type, horizon):
     # plain atoms, a single top-level `probabilistic`, and a `when` used
     # only to conditionally decrement the reward -- never `when` wrapping
     # `probabilistic`, and never `probabilistic` wrapping `when`.
+    def _take_action(course):
+        return f"take-{course}"
+    def add_action(c, action_name, precond_parts, prob, comp):
+        d.append(f"  (:action {action_name}")
+        d.append("    :parameters ()")
+        precond_parts = [f"(not (passed {c}))"] + precond_parts
+        d.append("    :precondition (and " + " ".join(precond_parts) + ")")
+        eff = [
+            f"(taken {c})",
+            f"(probabilistic {prob:.6f} (passed {c}) {comp:.6f} (and))",
+            f"(when {incomplete_cond} (decrease (reward) {PROGRAM_INCOMPLETE_PENALTY}))",
+        ]
+        effect_str = "(and\n      " + "\n      ".join(eff) + "\n    )"
+        d.append(f"    :effect {effect_str}")
+        d.append("  )")
+        d.append("")
+
     for c in courses:
         plist = prereqs[c]
         k = len(plist)
 
-        if k == 0: # First level; no prerequisites.
-            d.append(f"  (:action {_take_action(c)}")
-            d.append("    :parameters ()")
-            d.append(f"    :precondition (not (passed {c}))")
-            eff = [
-                f"(taken {c})",
-                f"(probabilistic 0.950000 (passed {c}) 0.050000 (and))",
-                f"(when {incomplete_cond} (decrease (reward) {PROGRAM_INCOMPLETE_PENALTY}))",
-            ]
-            effect_str = "(and\n      " + "\n      ".join(eff) + "\n    )"
-            d.append(f"    :effect {effect_str}")
-            d.append("  )")
-            d.append("")
+        if k == 0: # First level or no prerequisites.
+            add_action(c, _take_action(c), [], 0.95, 0.05)
+        elif type == "xtreme":
+            action_name = f"{_take_action(c)}"
+            add_action(c, action_name, [], 0.05, 0.95) # Prob regardless of prereqs
+            pattern_parts = [f"(passed {p})" for p in plist]
+            add_action(c, action_name + "__PREREQS", pattern_parts, 0.95, 0.05) # Prob if passed all prereqs
         else:
             for mask in range(2 ** k):
                 sat = [plist[i] for i in range(k) if (mask >> i) & 1]
@@ -219,19 +235,8 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, type, horizon):
                 comp = round(1.0 - prob, 6)
 
                 action_name = f"{_take_action(c)}__p{mask}"
-                d.append(f"  (:action {action_name}")
-                d.append("    :parameters ()")
-                precond_parts = [f"(not (passed {c}))"] + pattern_parts
-                d.append("    :precondition (and " + " ".join(precond_parts) + ")")
-                eff = [
-                    f"(taken {c})",
-                    f"(probabilistic {prob:.6f} (passed {c}) {comp:.6f} (and))",
-                    f"(when {incomplete_cond} (decrease (reward) {PROGRAM_INCOMPLETE_PENALTY}))",
-                ]
-                effect_str = "(and\n      " + "\n      ".join(eff) + "\n    )"
-                d.append(f"    :effect {effect_str}")
-                d.append("  )")
-                d.append("")
+                add_action(c, action_name, pattern_parts, prob, comp)
+
     d.append(")")
     domain_str = "\n".join(d) + "\n"
 
@@ -256,21 +261,21 @@ def build_ppddl(instance_name, courses, prereqs, program_reqs, type, horizon):
 # --------------------------------------------------------------------------
 # Instance generation + CLI
 # --------------------------------------------------------------------------
-PARAMS = "num_levels num_courses num_prereqs type horizon"
+PARAMS = "num_levels num_courses num_prereqs num_progreqs type horizon"
 
-def build_instances(instance_name, num_levels, num_courses, num_prereqs, type, horizon):
+def build_instances(instance_name, num_levels, num_courses, num_prereqs, num_progreqs, type, horizon):
     courses, prereqs, program_reqs = build_courses_and_prereqs(
-        num_levels, num_courses, num_prereqs
+        num_levels, num_courses, num_prereqs, num_progreqs, type
     )
-    rddl = build_rddl(instance_name, courses, prereqs, program_reqs, horizon)
+    rddl = build_rddl(instance_name, courses, prereqs, program_reqs, type, horizon)
     ppddl_domain, ppddl_problem = build_ppddl(
-        instance_name, courses, prereqs, program_reqs, horizon
+        instance_name, courses, prereqs, program_reqs, type, horizon
     )
     return rddl, ppddl_domain, ppddl_problem
 
 def validate_args(dataset, args):
     if dataset == 'train':
-        type_idx = 5
+        type_idx = 6
         if args[type_idx] != "ippc":
             return True
         num_levels_idx = 2
@@ -286,7 +291,7 @@ def validate_args(dataset, args):
 def create_instances(rddl_dir, instance_name, *args):
     rddl, ppddl_domain, ppddl_problem = build_instances(instance_name, *args)
     # File names
-    rddl_file = os.path.join(rddk_dir, instance_name + ".rddl")
+    rddl_file = os.path.join(rddl_dir, instance_name + ".rddl")
     ppddl_dir = rddl_dir.replace("rddl", "ppddl")
     ppddl_file = os.path.join(ppddl_dir, instance_name + ".ppddl")
     # Write RDDL

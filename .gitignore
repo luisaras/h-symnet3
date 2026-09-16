@@ -1,5 +1,7 @@
 # Parsed domains and PROST data (re-generate using prepare.sh)
-data/
+data/datasets/
+data/heuristics/
+data/logs/
 benchmarks/*/dbn
 benchmarks/*/parsed
 benchmarks/*/ppddl
@@ -16,7 +18,7 @@ multi_train/deep_plan/models/*/checkpoints/checkpoint
 temp_*/
 temp_config.py
 /plots/
-/.keras/
+.keras/
 .myscript.exclusivelock
 .combined
 oom

@@ -1,11 +1,11 @@
-import helper
-import my_config
 import numpy as np
+from helper import make_envs
+from . import my_config
 
 test_instances = [str(i) for i in range(910, 950)]
 def test(domain='navigation', instances=test_instances, num_episodes=30):
     my_config.domain = domain
-    envs = helper.make_envs(instances)
+    envs = make_envs(instances)
     writer = open(f'result_scripts/random_results/{domain}_random.csv', 'a')
     writer.write("Instance,Mean Reward\n")
     writer.close()

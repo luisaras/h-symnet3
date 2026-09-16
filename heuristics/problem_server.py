@@ -1,3 +1,4 @@
+# ASNet code.
 import os, sys, signal
 import numpy as np
 import rpyc
@@ -14,7 +15,7 @@ try:
 except ImportError:
     kernprof = None
 
-from heuristics.ssipp_interface import PlannerExtensions
+from .ssipp_interface import PlannerExtensions
 
 
 def _has_profile():

@@ -1,12 +1,8 @@
 import os, sys
 from itertools import count
-import my_config
-import symnet3_config
 
-curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-network_path = os.path.abspath(os.path.join(curr_dir_path, "networks"))
-if network_path not in sys.path:
-    sys.path = [network_path] + sys.path
+from . import my_config
+from . import symnet3_config
 
 symnet3_args = {"general_params", "se_params", "ad_params", "ge_params", "tm_params"}
 
@@ -51,8 +47,16 @@ class ModelFactory:
 		self.ckpt = ckpt
 		self.ckpt_manager = ckpt_manager
 
+	def set_ckpt_network(self, ckpt_dir, network):
+		import tensorflow as tf
+		ckpt_parts = {}
+		ckpt_parts["network"] = network
+		ckpt_parts["policynet_optim"] = self.policynet_optim
+		self.ckpt = tf.train.Checkpoint(**ckpt_parts)
+		self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, ckpt_dir, 2000)
+
 	def create_network(self): #	 Creates a combined network
-		import symnet3.symnet3 as symnet3
+		import multi_train.networks.symnet3.symnet3 as symnet3
 		return symnet3.SymNet3(**dict((k, self.args[k]) for k in symnet3_args))
 
 	@staticmethod

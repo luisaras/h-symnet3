@@ -1,16 +1,10 @@
 import os, sys, json
 import numpy as np
-import my_config
 import networkx as nx
-import re
 
-curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-root_path = os.path.abspath(os.path.join(curr_dir_path, "..", ".."))
-if root_path not in sys.path:
-	sys.path = [root_path] + sys.path
-
-from heuristics import compute_heuristics
+from heuristics import get_planner_wrapper
 from gym import Wrapper
+from . import my_config
 
 class EnvInstanceWrapper(Wrapper):
 	def __init__(self, env):
@@ -36,11 +30,9 @@ class EnvInstanceWrapper(Wrapper):
 		self._cache_masks = None
 
 		if my_config.heuristics:
-			compute_heuristics.wrapper_type = my_config.init_heuristics
 			domain_folder = env.instance_parser.domain_folder
 			ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
-			self.planner_wrapper = compute_heuristics.get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
-			self.planner_wrapper.normalization = my_config.heuristic_normalization
+			self.planner_wrapper = get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
 			self.planner_wrapper.instance_parser = env.instance_parser
 			h_file = os.path.join(my_config.heuristics_dataset_folder,
 				env.instance_parser.domain, 
@@ -103,11 +95,13 @@ class EnvInstanceWrapper(Wrapper):
 		features = np.array(list(map(state2feature, states))).astype(np.float32)
 		return features
 
-	def estimate_successor_heuristics(self, states, action_var):
-		return np.array([
-			self.planner_wrapper.get_heuristics(self.env.sample_step(s, action_var)[0]) 
-				for s in states
-		])
+	def get_successor_heuristic_input(self, states, action_var):
+		return np.vstack([self.estimate_successor_heuristics(s, action_var) for s in states])
+
+	def estimate_successor_heuristics(self, state, action_var):
+		samples = np.array([self.planner_wrapper.get_heuristics(self.env.sample_step(state, action_var)[0])
+							for s in range(my_config.heuristic_samples)])
+		return np.mean(samples, axis=0)
 
 	def get_random_action(self):
 		return np.random.randint(0, self.env.get_num_actions())

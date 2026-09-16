@@ -5,14 +5,15 @@ import sys, os, io, ast, argparse, subprocess, copy
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from run import symnet3_env_cmd, run_symnet3_env
-from benchmarks.generator import Generator
-from prost.dataset_builder import create_dataset
+from run import run_symnet3_env, get_setting_instances
+from benchmarks.instance_generator import Generator
+from data.dataset_builder import create_dataset
 
 IPPC=["academic_advising_ippc", "crossing_traffic", "game_of_life", "navigation", "skill_teaching", "sysadmin", "tamarisk", "traffic", "wildfire"]
 LR=["academic_advising_chain", "academic_advising", "pizza_delivery", "pizza_delivery_grid", "pizza_delivery_windy", "wall", "stochastic_navigation", "stochastic_wall corridor"]
 EXTRA=["recon", "triangle_tireworld", "elevators"]
 TEST=["navigation", "academic_advising", "exploding_blocks"]
+DET=["navigation"]
 
 def parse_arguments():
 	formatter = lambda prog: argparse.ArgumentDefaultsHelpFormatter(
@@ -36,28 +37,41 @@ def parse_arguments():
 		action="store_true")
 	parser.add_argument("-i", "--ins", help="first and last instances", 
 		nargs=2, type=int, default=[1, 254])
+	parser.add_argument("-s", "--setting",  help='"debug": for quick sanity tests (uses debug instances)\n' +
+												 '"local": for local tests (uses fewer instances)' +
+												 '"lr": long-range instances' +
+												 '"ippc": ippc instances' +
+												 '"det": deterministic instances',
+		default="",
+		choices=["debug", "ippc1", "ippc2", "ippc3", "det", "lr", "extra", ""])
 	args = parser.parse_args()
 	args.run_all = not (args.generate or args.parse or args.plan or args.heuristics)
 	return args
 
 
-def generate_instances(first_inst, last_inst, domains, skip=False):
+def generate_instances(first_inst, last_inst, domains, setting, skip=False):
 	print("Generating RDDL instances.")
 	generator = Generator(None, verbose=True)
-	def generate(d, f, l, dataset):
+	def generate(f, l, dataset):
 		f = max(f, first_inst)
-		l = min(l, last_inst)
-		n = l - f + 1
-		if n > 0:
-			generator.generate_all(d, dataset, f, n, seed=-1, skip=skip)
-	for d in domains:
-		generate(d, 1, 200, "train")
-		generate(d, 201, 210, "val")
-		generate(d, 211, 250, "test")
-		generate(d, 251, 251, "debug1")
-		generate(d, 252, 252, "debug2")
-		generate(d, 253, 253, "debug3")
-		generate(d, 254, 254, "debug4")
+		l = min(l, last_inst+1)
+		if l > f:
+			for d in domains:
+				generator.generate_all(d, dataset, range(f, l), seed=-1, skip=skip)
+	if setting == "debug" or setting == "":
+		generate(251, 252, "debug1")
+		generate(252, 253, "debug2")
+		generate(253, 254, "debug3")
+		generate(254, 255, "debug4")
+	if setting != "debug":
+		if setting == "":
+			setting = "ippc3"
+		i, _ = get_setting_instances(setting)
+		if "ippc" in setting:
+			setting = "ippc"
+		generate(i[0], i[1], setting + "-train")
+		generate(i[1], i[2], setting + "-val")
+		generate(i[2], i[3], setting + "-test")
 
 
 def preprocess_rddl(first_inst, last_inst, domains, skip=False):
@@ -102,27 +116,38 @@ def precompute_heuristics(first_inst, last_inst, domains, skip=False):
 
 if __name__ == "__main__":
 	args = parse_arguments()
-	domains = TEST
-	if len(args.domains) > 0:
-		if args.domains[0].upper() == "IPPC":
+	domains = args.domains
+	setting = args.setting.lower()
+	if len(args.domains) == 0:
+		if setting == "ippc":
 			domains = IPPC
-		elif args.domains[0].upper() == "LR":
+		elif setting == "lr":
 			domains = LR
-		elif args.domains[0].upper() == "EXTRA":
+		elif setting == "extra":
 			domains = EXTRA
-		else:
-			domains = args.domains
-	print(f"Preparing instances {args.ins[0]} to {args.ins[1]} of domains: {",".join(domains)}" )
+		elif setting == "det":
+			domains = DET
+		else: # debug or local
+			domains = TEST
+
+	first_inst = args.ins[0]
+	last_inst = args.ins[1]
+	if setting != "":
+		i = get_setting_instances(setting)
+		first_inst = max(first_inst, i[0])
+		last_inst = min(last_inst, i[3]-1)
+
+	print(f"Preparing instances {first_inst} to {last_inst} of domains: {",".join(domains)}" )
 	if args.generate:
-		generate_instances(args.ins[0], args.ins[1], domains)
+		generate_instances(first_inst, last_inst, domains, setting)
 	if args.parse:
-		preprocess_rddl(args.ins[0], args.ins[1], domains, skip=False)
+		preprocess_rddl(first_inst, last_inst, domains, skip=False)
 	if args.plan:
-		generate_trajectories(args.ins[0], args.ins[1], domains, skip=False)
-	if args.heuristics: 
-		precompute_heuristics(args.ins[0], args.ins[1], domains, skip=False)
+		generate_trajectories(first_inst, last_inst, domains, skip=False)
+	if args.heuristics:
+		precompute_heuristics(first_inst, last_inst, domains, skip=False)
 	if args.run_all:
-		generate_instances(args.ins[0], args.ins[1], domains)
-		preprocess_rddl(args.ins[0], args.ins[1], domains, skip=True)
-		generate_trajectories(args.ins[0], args.ins[1], domains, skip=True)
-		precompute_heuristics(args.ins[0], args.ins[1], domains, skip=True)
+		generate_instances(first_inst, last_inst, domains, setting)
+		preprocess_rddl(first_inst, last_inst, domains, skip=True)
+		generate_trajectories(first_inst, last_inst, domains, skip=True)
+		precompute_heuristics(first_inst, last_inst, domains, skip=True)

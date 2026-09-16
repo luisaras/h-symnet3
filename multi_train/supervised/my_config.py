@@ -18,7 +18,7 @@ LR domains:
 academic_advising(EAcad), navigation(DNav), corridor(StNav), recon(SRecon), pizza_delivery_windy(Pizza), stochastic_wall(StNav)
 '''
 
-setting = "custom" # "ippc" or "lr" to select specific instances
+setting = "ippc" # "mini", "debug", "ippc" or "lr" to select specific instances
 domain = "navigation" # Domain to be tested on
 benchmark_folder = "../../benchmarks/"
 
@@ -45,10 +45,7 @@ ckpt_freq = 10 # After how many epoch is an evaluation performed
 keep_ckpts = True # Keeps all checkpoints instead of only the best-performing one
 
 # Best not to change these. 
-add_separate_adj = False # Keep DBN edges separately in two extra adjacency layers
-add_edge_type = True # An extra adjacency layer for each edge type
 remove_dbn = False # Discard DBN layers
-merged_model = True # Add new edges between new nodes for non-fluents and gnd objects
 split_dbn = False # Add layer of type edges (one layer for each type pair of connected nodes)
 use_type_encoding = True # Add a features indicating the type of a node
 use_fluent_for_kl = True # Only use random fluent nodes when computing KL
@@ -71,3 +68,5 @@ init_heuristics = "on_demand"
 # horizon: divide by horizon
 # max: divide by max value found in dataset
 heuristic_normalization = "none"
+# number of times the successor state is sampled to compute the average sucessor heuristic
+heuristic_samples = 1

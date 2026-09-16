@@ -97,10 +97,10 @@ class Generator():
             return True
         return False
 
-    def generate_all(self, domain, dataset, i, n, seed=None, skip=False):
+    def generate_all(self, domain, dataset, instances, seed=None, skip=False):
         if seed and seed >= 0:
             self.set_seed(seed)
-        for instance in range(i, i + n):
+        for instance in instances:
             if seed == -1:
                 self.set_seed(instance)
             instance = str(instance)
@@ -112,4 +112,6 @@ class Generator():
 if __name__ == '__main__':
     args = parse_arguments()
     generator = Generator(rddlsim_root, args.verbose)
-    generator.generate_all(args.domain, args.dataset, args.instance, args.num_instances, args.seed, args.skip)
+    i = args.instance
+    n = args.num_instances
+    generator.generate_all(args.domain, args.dataset, range(i, i + n), args.seed, args.skip)

@@ -1,17 +1,13 @@
-import os, sys
+import os, sys, shutil
 import numpy as np
-import shutil
-import my_config
-import symnet3_config
-from env_instance_wrapper import EnvInstanceWrapper
 from datetime import datetime
 
-curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-root_path = os.path.abspath(os.path.join(curr_dir_path, "..", ".."))
-if root_path not in sys.path:
-	sys.path = [root_path] + sys.path
 import gym
 from gym.envs.rddl import instance_parser
+from heuristics import setup_planner_wrappers
+from .env_instance_wrapper import EnvInstanceWrapper
+from . import my_config
+from . import symnet3_config
 
 def load_config_mods(file, module):
 	with open(file, "r") as f:
@@ -21,6 +17,11 @@ def load_config_mods(file, module):
 def load_config(file=None):
 	if file:
 		load_config_mods(file, my_config)
+	instance_parser.setup(
+		benchmark_folder=my_config.benchmark_folder,
+		remove_dbn=my_config.remove_dbn,
+		split_dbn=my_config.split_dbn
+	)
 	load_net_config(my_config.net_config)
 
 def load_net_config(net_config=None):
@@ -44,7 +45,8 @@ def get_instance_names():
 	return train_instances, test_instances
 
 def make_envs(instances):
-	instance_parser.setup(my_config)
+	if my_config.heuristics:
+		setup_planner_wrappers(my_config.init_heuristics, my_config.heuristic_normalization)
 	envs = []
 	for instance in instances:
 		try: 
@@ -106,7 +108,7 @@ def restore_settings(model_dir):
 
 def get_model_dir(config_file, create=False):
 	model_name = f"{my_config.domain}_{my_config.exp_description}"
-	model_dir = os.path.abspath(os.path.join(my_config.model_dir, model_name))
+	model_dir = os.path.abspath(os.path.join("..", "..", my_config.model_dir, model_name))
 	checkpoint_dir = os.path.join(model_dir, "checkpoints")
 	#train_summary_path = os.path.join(model_dir, "train_summaries")
 	#val_summary_path = os.path.join(model_dir, "val_summaries")
@@ -117,8 +119,8 @@ def get_model_dir(config_file, create=False):
 		if my_config.restore_config:
 			backup_settings(model_dir, config_file)
 		#os.makedirs(os.path.join(model_dir, "instances"), exist_ok=True)
-		log_header = "init: " + str(datetime.now()) + "\n"
-		log_header += my_config.test_instance + "\n"
+		log_header = "# init: " + str(datetime.now()) + "\n"
+		log_header += ("ckpt," + my_config.test_instance).replace(",", "\tins ") + "\n"
 		write_content(log_file, log_header)
 	else:
 		if not os.path.exists(checkpoint_dir):
@@ -126,13 +128,44 @@ def get_model_dir(config_file, create=False):
 			exit(-1)
 	return model_dir, checkpoint_dir, log_file
 
-def read_checkpoint_log(log_file):
+def log_checkpoint_rewards(log_file, creward_means, ckpt):
+	rewards_str = "\t".join([str(mr) for mr in creward_means])
+	write_content(log_file, f"{ckpt}   \t{rewards_str}\n")
+
+def read_checkpoint_rewards(log_file):
 	with open(log_file, 'r') as f:
 		best_ckpt, best_rew = 1, -1000000
 		lines = f.readlines()
 		i = len(lines) - 1
 		if i < 2:
 			return [] # No checkpoints
-		while i > 0 and not lines[i].startswith("init"):
+		while i > 0 and not lines[i].startswith("# init"):
 			i -= 1
-		return lines[i+2:]
+		ins = lines[i+1]
+		return lines[i+2:], ins.count("\t") - 1
+
+def find_best_checkpoint(log_file):
+	ckpts, n = read_checkpoint_rewards(log_file)
+	best_rew = -1000000
+	best = None
+	for line in ckpts:
+		toks = line.split("\t")
+		ckpt = toks[0].strip()
+		toks = toks[1:n]
+		rew = np.mean([float(x) for x in toks])
+		if rew > best_rew:
+			best_rew = rew
+			best = ckpt
+	return best
+
+def write_checkpoint_results(save_path, ckpt_log, ep_log):
+    # Log loss and total rewards.
+    with open(save_path + "_losses.csv", 'w') as f:
+        f.write("epoch\tins\ttime\tloss\n")
+        for (e, ins, t, loss) in ckpt_log:
+            f.write(f"{e}\t{ins}\t{t}\t{loss}\n")
+    with open(save_path + "_rewards.csv", 'w') as f:
+        f.write("ins\treward\tlength\ttime\n")
+        for (env, crewards, lengths, times) in ep_log:
+            for r, l, t in zip(crewards, lengths, times):
+                f.write(f"{env.get_instance_num()}\t{r}\t{l}\t{t}\n")

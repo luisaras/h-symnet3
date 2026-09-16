@@ -61,7 +61,7 @@ class RDDLSimulator:
 		else:
 			self._load_instance(instance_parser.parsed_instance_file)
 
-	def _load_instance(file):
+	def _load_instance(self, file: str):
 		# Better without the explicit encoding
 		parsed_instance_file_byteobject = file.encode()
 		parsed_instance_file_ctype = ctypes.create_string_buffer(parsed_instance_file_byteobject, len(parsed_instance_file_byteobject))
@@ -80,12 +80,13 @@ class RDDLSimulator:
 		#state = np.array(array, dtype=np.int8)
 		return tuple(array), reward
 
-	def _is_done(self, s):
+	def _is_done(self, s: tuple) -> tuple[bool, int]:
 		if self._tstep > self.horizon:
-			return True 
+			return True, 1 
 		elif self.termination_id >= 0:
-			return s[self.termination_id] == 1
-		return False
+			if s[self.termination_id] == 1:
+				return True, self.horizon - self._tstep + 1
+		return False, 0
 
 	def reset(self, state: tuple = None) -> tuple[float, ...]:
 		self._tstep = 1  # current time step
@@ -96,23 +97,20 @@ class RDDLSimulator:
 
 	def lookahead(self, state: tuple, action_var: int) -> tuple[tuple, float, bool]:
 		next_state, reward = self._get_next_state(state, action_var)
-		return next_state, reward, self._is_done(next_state)
+		done, steps = self._is_done(self._state)
+		if done: # Only works for 0-reward goal
+			reward *= steps
+		return next_state, reward, done
 
 	def step(self, action_var: int) -> tuple[tuple, float, bool]:
 		# Convert state and action to c-types
-		s = self._state
-		array = (ctypes.c_double * len(s))(*s) # C array
-		action = (ctypes.c_int)(action_var)
-
-		# Call Simulator
-		reward = self.simlib.step(array, len(s), action)
-		#state = np.array(array, dtype=np.int8)
-		self._state = tuple(array)
-
+		self._state, reward = self._get_next_state(self._state, action_var)
 		# Advance time step
 		self._tstep = self._tstep + 1
-
-		return self._state, reward, self._is_done(self._state)
+		done, steps = self._is_done(self._state)
+		if done: # Only works for 0-reward goal
+			reward *= steps
+		return self._state, reward, done
 
 
 class PyRDDLSimulator:

@@ -23,9 +23,6 @@ class RDDLEnv(Env):
 		# Seed Random number generator
 		self._seed()
 
-		self.done = False  # end_of_episode flag
-		self.state = None # tuple
-
 		self.rddlsim = RDDLSimulator(self.instance_parser)
 		self.rddlsim.reset()
 
@@ -38,8 +35,8 @@ class RDDLEnv(Env):
 
 	# Take a real step in the environment. Current state changes.
 	def _step(self, action_var: int):
-		self.state, reward, done = self.rddlsim.step(action_var)
-		return self.state, reward, done, {}
+		state, reward, done = self.rddlsim.step(action_var)
+		return state, reward, done, {}
 
 	# Using Sampling
 	def sample_step(self, state: tuple, action_var: int):
@@ -60,8 +57,8 @@ class RDDLEnv(Env):
 		return next_state, expected_rew/num_samples, done_chance/num_samples
 
 	def reset_to_state(self, state):
-		self.state = self.rddlsim.reset(state)
-		return self.state, {}
+		state = self.rddlsim.reset(state)
+		return state, {}
 
 	def random_reset(self):
 		return self.reset_to_state(self.random_state())
@@ -79,7 +76,6 @@ class RDDLEnv(Env):
 		actions[action] = 1
 		reward = self.instance_parser.reward_formula(state, actions)
 		for (i, node) in enumerate(state):
-			# next_state[i] = self.eval_formula(self.formulae[i], state, actions)
 			next_state[i] = self.instance_parser.formulae[i](state, actions)
 		return next_state, reward
 

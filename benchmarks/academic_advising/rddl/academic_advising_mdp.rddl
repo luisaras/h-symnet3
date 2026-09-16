@@ -30,7 +30,8 @@ domain academic_advising_mdp {
     // Nonfluents: course passing probabilities
     PRIOR_PROB_PASS_NO_PREREQ(course) : { non-fluent, real, default = 0.95 }; // Probability of passing a course with no prereqs
     PRIOR_PROB_PASS(course)           : { non-fluent, real, default = 0.05 }; // Probability of passing a course regardless of prereq status
-    
+    PRIOR_PROB_PENALTY(course)        : { non-fluent, real, default = 0.05 }; // Probability penalty for each incomplete prereq
+
     // Nonfluents: program requirements for graduation
     PROGRAM_REQUIREMENT(course) : { non-fluent, bool, default = false }; // Specifies whether course is program requirement 
     
@@ -39,12 +40,16 @@ domain academic_advising_mdp {
     COURSE_RETAKE_COST(course) : { non-fluent, real, default = -2 }; // Cost for re-taking a course (heavily discouraged)
     PROGRAM_INCOMPLETE_PENALTY : { non-fluent, real, default = -5 }; // Penalty at each time step for having an incomplete program
 
-	// State
+	  // State
     passed(course) : { state-fluent, bool, default = false };
     taken(course)  : { state-fluent, bool, default = false };
 
-	// Action
+ 	  // Action
     takeCourse(course)   : { action-fluent, bool, default = false };
+
+    // Hack for parsers that don't recognize the "termination" keyword
+    termination : {state-fluent, bool, default = false};
+
   };
 
   cpfs {
@@ -60,12 +65,14 @@ domain academic_advising_mdp {
 			then [ if (~exists_{?c2 : course} PREREQ(?c2,?c))
 			       then Bernoulli( PRIOR_PROB_PASS_NO_PREREQ(?c) )  
 			       else Bernoulli((PRIOR_PROB_PASS(?c)) + 
-			                      (1 - PRIOR_PROB_PASS(?c))*[[sum_{?c2 : course} (PREREQ(?c2,?c) ^ passed(?c2))] 
+			                      (1 - PRIOR_PROB_PENALTY(?c))*[[sum_{?c2 : course} (PREREQ(?c2,?c) ^ passed(?c2))] 
 								                             / [1 + sum_{?c2 : course} PREREQ(?c2,?c)]]) ]
 			else
 				passed(?c); // Value persists if course not taken or already passed
 	
-	taken'(?c) = taken(?c) | takeCourse(?c);
+	  taken'(?c) = taken(?c) | takeCourse(?c);
+
+    termination' = forall_{?c : course} [PROGRAM_REQUIREMENT(?c) => passed(?c)];
 
   };
 
@@ -74,6 +81,10 @@ domain academic_advising_mdp {
  	  [sum_{?c : course} [COURSE_COST(?c) * (takeCourse(?c) ^ ~taken(?c))]]
  	+ [sum_{?c : course} [COURSE_RETAKE_COST(?c) * (takeCourse(?c) ^ taken(?c))]]
  	+ [PROGRAM_INCOMPLETE_PENALTY * ~[forall_{?c : course} (PROGRAM_REQUIREMENT(?c) => passed(?c))]];
+
+//  termination {
+//    forall_{?c : course} [PROGRAM_REQUIREMENT(?c) => passed(?c)];
+//  };
 
 }     
  

@@ -1,12 +1,10 @@
-import os
+import os, random, copy
 import numpy as np
 import pandas as pd
-import random
-import my_config
-import copy
-import helper
 import tensorflow as tf
 from tqdm import tqdm
+
+from . import my_config
 
 class SupervisedDataset():
 	def __init__(self, instance_list, envs, batch_size):

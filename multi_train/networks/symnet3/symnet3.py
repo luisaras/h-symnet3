@@ -1,6 +1,6 @@
 import tensorflow as tf
-from symnet3.unet import GATConvLayer, GATConvLayerDistance
-from symnet3.action_decoder import ActionDecoder, get_activation_fn
+from .unet import GATConvLayer, GATConvLayerDistance
+from .action_decoder import ActionDecoder, get_activation_fn
 import numpy as np
 import pdb
 
@@ -160,7 +160,7 @@ class SymNet3(tf.keras.Model):
 
             global_embed = global_features
             if self.num_heuristics > 0:
-                h = env_wrapper.estimate_successor_heuristics(states, i)
+                h = env_wrapper.get_successor_heuristic_input(states, i)
                 global_embed = tf.concat([global_embed, h], axis=-1)
 
             arg_node_embed = global_embed

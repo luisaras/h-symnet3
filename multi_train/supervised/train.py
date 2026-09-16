@@ -1,33 +1,20 @@
 #!/usr/bin/env python3
 # =============================================================================
-
-import sys
-import os
-import multiprocessing
-import time
-import pickle
-import pdb
-import random
+import sys, os, time, random
 import numpy as np
-from datetime import datetime
-
-import my_config
-
-lock = multiprocessing.Lock()
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
-network_path = os.path.abspath(os.path.join(curr_dir_path,"networks"))
-if network_path not in sys.path:
-    sys.path = [network_path] + sys.path
 parent_dir_path = os.path.abspath(os.path.join(curr_dir_path,"..",".."))
 if parent_dir_path not in sys.path:
     sys.path = [parent_dir_path] + sys.path
 
-from policy_monitor import PolicyMonitor
-import helper
-from model_factory import ModelFactory
+from multi_train.supervised import *
 
-load_saved_dataset = False
+
+def validate(policy_monitor):
+    results = policy_monitor.eval_policy(num_episodes=my_config.num_validation_episodes)
+    ep_log = zip(policy_monitor.envs, results["ep_crewards"], results["ep_lengths"], results["ep_times"])
+    return results["creward_means"], ep_log
 
 # Performs one network update from the given batch (x, y). 
 # Returns two values the policy loss and the aux loss (None if not enabled).
@@ -87,27 +74,7 @@ def train(model_dir, ckpt_dir, log_file=None):
     train_envs = helper.make_envs(train_instances)
     print("Envs created.")
 
-    policynet_optim = tf.keras.optimizers.Adam(learning_rate=my_config.lr)
-    model_factory = ModelFactory(train_envs[0], policynet_optim=policynet_optim)
-
-    network = model_factory.create_network()
-    network.init_network(train_envs[0])
-    policy_monitor = PolicyMonitor(
-        envs=helper.make_envs(val_instances),
-        network=network,
-        domain=my_config.domain,
-        summary_writer=None,
-        model_factory=model_factory)
-    policy_monitor.network_copy.init_network(train_envs[0])
-    print("Created policy monitor.")
-
-    # Create CheckpointManager
-    ckpt_parts = {}
-    ckpt_parts["network"] = network
-    ckpt_parts["policynet_optim"] = policynet_optim
-    ckpt = tf.train.Checkpoint(**ckpt_parts)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, ckpt_dir, 2000)
-    model_factory.set_ckpt_metadata(ckpt, ckpt_manager)
+    network, model_factory = create_model_factory(ckpt_dir, train_envs[0])
 
     # Load weights
     step = 0
@@ -117,6 +84,12 @@ def train(model_dir, ckpt_dir, log_file=None):
         print("Loaded model from checkpoint: " + str(model_factory.ckpt_manager.latest_checkpoint))
         step = network.trained_steps.numpy()
         start_epoch = network.trained_epochs.numpy()
+
+    policy_monitor = PolicyMonitor(
+        envs=helper.make_envs(val_instances),
+        network=network,
+        domain=my_config.domain)
+    print("Created policy monitor.")
 
     # SUPERVISED TRAINING STARTS
     # Training dataset
@@ -180,15 +153,13 @@ def train(model_dir, ckpt_dir, log_file=None):
 
         # Validation
         if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
-            policy_monitor.copy_params()
             save_path = model_factory.save_ckpt()
             time.sleep(5)
-            results = policy_monitor.eval_policy(num_episodes=my_config.num_validation_episodes)
+            crewards, ep_log = validate(policy_monitor)
             if log_file is not None:
-                rewards_str = ",".join([str(mr) for mr in results["creward_means"]])
-                helper.write_content(log_file, f"{model_factory.get_ckpt_num()},{rewards_str}\n")
+                helper.log_checkpoint_rewards(log_file, crewards, model_factory.get_ckpt_num())
             # Log best and current mean total rewards.
-            val_reward = np.mean(results["creward_means"])
+            val_reward = np.mean(crewards)
             print(f"This checkpoint has a reward of {val_reward}, best is {best_val_reward}.")
             if not my_config.keep_ckpts:
                 if val_reward <= best_val_reward:
@@ -202,57 +173,13 @@ def train(model_dir, ckpt_dir, log_file=None):
                     best_ckpt = save_path
                     print("Deleting previous.")
             best_val_reward = max(best_val_reward, val_reward)
-            # Log loss and total rewards.
-            with open(save_path + "_losses.csv", 'w') as f:
-                f.write("epoch\tins\ttime\tloss\n")
-                for (e, ins, t, loss) in ckpt_log:
-                    f.write(f"{e}\t{ins}\t{t}\t{loss}\n")
-            with open(save_path + "_rewards.csv", 'w') as f:
-                f.write("ins\treward\tlength\ttime\n")
-                for (env, crewards, lengths, times) in zip(policy_monitor.envs, results["ep_crewards"], results["ep_lengths"], results["ep_times"]):
-                    for r, l, t in zip(crewards, lengths, times):
-                        f.write(f"{env.get_instance_num()}\t{r}\t{l}\t{t}\n")
+            helper.write_checkpoint_results(save_path, ckpt_log, ep_log)
             ckpt_log = []
 
 if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None
     helper.load_config(config_file)
     
-    #For each domain, we generate 1000 training, 100 validation, and 200 test instances with size increasing from train to val to test instances.
-    if my_config.setting == "ippc":
-        my_config.train_instance = ",".join(str(900+i) for i in range(200))   
-        my_config.test_instance = ",".join(str(1100+i) for i in range(10))
-
-        # Some training files weren't created properly which is why they've been excluded from training
-        if my_config.domain == 'navigation':
-            my_config.train_instance = ",".join([str(700+i) for i in range(200) if 700+i not in [705,798]])
-            my_config.test_instance = ",".join(str(900+i) for i in range(10))
-        
-        if my_config.domain == 'triangle_tireworld':
-            my_config.train_instance = ",".join(str(1000+i) for i in range(100)) # Generator doesn't have enough diversity in parameters, only need a 100 instances
-            my_config.test_instance = ",".join(str(1100+i) for i in range(10))
-    
-    elif my_config.setting == "lr":
-        if my_config.domain == 'recon': # SRecon
-            my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2177])
-            my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'academic_advising_prob': # EAcad
-            # These instances were rejected because their score is worse than a no-op policy
-            my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2100,2119,2126,2130,2143,2150,2183,2185,2189,2194,2203,2205,2242,2258,2283,2290,2296,2329,2336,2344,2351,2417,2432,2472,2482,2488,2505,2508,2523,2530,2540,2569,2586,2589,2597,2605,2613,2623,2640,2686,2730,2747,2778,2780,2869,2889,2961,2994,2998,3023,3042,3081,3095])
-            my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'pizza_delivery_windy': # Pizza
-            my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2692])
-            my_config.test_instance = ",".join(str(3100+i) for i in range(100))        
-        if my_config.domain == 'navigation': # DNav
-            my_config.train_instance = ",".join([str(1100+i) for i in range(1000) if 1100+i not in [1333,1965,1966,1967,1968,1969,1970,1971,1972,1973,1974,1975,1976,1977,1978,1979]])
-            my_config.test_instance = ",".join([str(2100+i) for i in range(100)])
-        if my_config.domain == 'stochastic_wall': #StWall
-            my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2806,2835,2837,3069,3080])
-            my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-        if my_config.domain == 'corridor': # StNav
-            my_config.train_instance = ",".join(str(2100+i) for i in range(1000) if 2100+i not in [2211])
-            my_config.test_instance = ",".join(str(3100+i) for i in range(100))
-
     model_dir, ckpt_dir, log_file = helper.get_model_dir(config_file, create=True)
     if my_config.restore_config:
         helper.restore_settings(model_dir)

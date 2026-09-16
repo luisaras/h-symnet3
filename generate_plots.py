@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # =============================================================================
-
 import os, argparse
 import glob
 import pandas as pd
@@ -29,7 +28,7 @@ def parse_arguments():
 		description="Generate plots from model training logs",
 		formatter_class=formatter,
 	)
-	default_root = os.path.join('.', 'multi_train', 'deep_plan', 'models')
+	default_root = os.path.join('.', 'multi_train', 'supervised', 'models')
 	default_out_dir = os.path.join('.', 'plots')
 
 	parser.add_argument(	     'domains',	help="domain name (navigation, sysadmin)",

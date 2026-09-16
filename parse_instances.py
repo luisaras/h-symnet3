@@ -60,6 +60,7 @@ def parse_rddl(instance, rddls, temp_folder, out_file):
 		result = subprocess.run(cmd, capture_output=True, text=True)
 		if os.path.exists(f"{temp_folder}/{instance}"):
 			shutil.move(f"{temp_folder}/{instance}", out_file)
+			print(f"{out_file} generated.")
 		else:
 			print(F"PROBLEM parsing {instance}!")
 			print(e.stdout)

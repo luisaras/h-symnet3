@@ -1,6 +1,4 @@
-import numpy as np
-import my_config as my_config
-from model_factory import ModelFactory
+from .model_factory import ModelFactory
 
 class Worker(object):
 	def __init__(self, worker_id, domain, envs, global_network,
@@ -27,9 +25,7 @@ class Worker(object):
 		self.action_noop = 0
 
 		if self.policy_monitor is not None:
-			self.global_network.init_network(self.envs[0])
-			self.policy_monitor.network_copy.init_network(self.envs[0])
-			self.policy_monitor.copy_params()
+			self.policy_monitor.network = self.local_network
 		self.copy_global_params()
 
 		# To train using a dataset
@@ -47,5 +43,5 @@ class Worker(object):
 		self.lock.release()
 
 	def eval_policy_net(self, num_episodes=5, graph_file=None, get_attn_map=False, get_node_emb=False):
-		self.policy_monitor.copy_params()
-		return self.policy_monitor.eval_policy(num_episodes, graph_file, save_model, cache_actions=True, get_attn_map, get_node_emb=get_node_emb, verbose=True)
+		self.copy_global_params()
+		return self.policy_monitor.eval_policy(num_episodes, graph_file, get_attn_map, get_node_emb, cache_actions=True)

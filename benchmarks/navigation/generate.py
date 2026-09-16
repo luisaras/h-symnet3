@@ -51,24 +51,29 @@ rng = random.Random()
 # resultem nos mesmos valores dado o mesmo seed.
 # ---------------------------------------------------------------------
 def compute_P(w, h, t):
+    goal = (w, h)
+    init_pos = (w, 1)
     if t == "deterministic":
         # probability = 0
         safe_cols = []
         danger_chance = lambda i: 0
         safe_chance = lambda i: 0
-    elif t == "default":
+        # random goal/init cells
+        goal = (rng.randint(1, w), rng.randint(1, h))
+        init_pos = (rng.randint(1, w), rng.randint(1, h))
+    elif t == "ippc":
         # rddlsim generator probabilities
         safe_cols = range(1, w + 1)
         danger_chance = lambda i: (0.01 + ((0.9 * (i - 1)) / (w - 1))) + 0.05 * rng.uniform(0, 1)
         safe_chance = danger_chance
     else:
-        # symnet probabilities
+        # symnet (long range) probabilities (corridor)
         danger_chance = lambda i: rng.uniform(0.88, 0.92)
         safe_chance = lambda i: rng.uniform(0.045, 0.055)
         if t == "stochastic":
             # random single safe column
             safe_cols = [rng.randint(1, w)]
-        else:  # corridor
+        else:
             # first column as the safe column
             safe_cols = [1]
 
@@ -84,13 +89,13 @@ def compute_P(w, h, t):
                 p = danger_chance(i)
                 if p > 0:
                     P[(i, j)] = p
-    return P
+    return P, goal, init_pos
 
 
 # ---------------------------------------------------------------------
 # RDDL
 # ---------------------------------------------------------------------
-def build_rddl(instance_name, w, h, horizon, P):
+def build_rddl(instance_name, w, h, horizon, P, goal, init_pos):
     xpos = [f'x{i}' for i in range(1, w + 1)]
     ypos = [f'y{j}' for j in range(1, h + 1)]
     nonfluents = []
@@ -108,7 +113,7 @@ def build_rddl(instance_name, w, h, horizon, P):
     nonfluents.append("MIN-YPOS(y1);")
     nonfluents.append(f"MAX-XPOS(x{w});")
     nonfluents.append(f"MAX-YPOS(y{h});")
-    nonfluents.append(f"GOAL(x{w},y{h});")
+    nonfluents.append(f"GOAL(x{goal[0]},y{goal[1]});")
 
     for i in range(1, w + 1):
         for j in range(2, h):
@@ -135,7 +140,7 @@ instance {instance_name} {{
     domain = navigation_mdp;
     non-fluents = nf_{instance_name};
     init-state {{
-        robot-at(x{w},y1);
+        robot-at(x{init_pos[0]},y{init_pos[1]});
     }};
     max-nondef-actions = 1;
     horizon = {horizon};
@@ -155,10 +160,7 @@ _DIRS = {
 }
 
 
-def build_ppddl(instance_name, w, h, horizon, P):
-    goal = (w, h)
-    init_pos = (w, 1)
-
+def build_ppddl(instance_name, w, h, horizon, P, goal, init_pos):
     xpos = [f"x{i}" for i in range(1, w + 1)]
     ypos = [f"y{j}" for j in range(1, h + 1)]
 
@@ -270,9 +272,9 @@ PARAMS = "width height type horizon"
 def build_instances(instance_name, width, height, type, horizon):
     """Sorteia P uma unica vez e gera as tres representacoes a partir
     dele: RDDL, dominio PPDDL e problema PPDDL."""
-    P = compute_P(width, height, type)
-    rddl = build_rddl(instance_name, width, height, horizon, P)
-    ppddl_domain, ppddl_problem = build_ppddl(instance_name, width, height, horizon, P)
+    P, goal, init_pos = compute_P(width, height, type)
+    rddl = build_rddl(instance_name, width, height, horizon, P, goal, init_pos)
+    ppddl_domain, ppddl_problem = build_ppddl(instance_name, width, height, horizon, P, goal, init_pos)
     return rddl, ppddl_domain, ppddl_problem
 
 def validate_args(dataset, args):
