@@ -2,6 +2,7 @@
 # =============================================================================
 import sys, os, time, random
 import numpy as np
+import tensorflow as tf
 
 curr_dir_path = os.path.dirname(os.path.realpath(__file__))
 parent_dir_path = os.path.abspath(os.path.join(curr_dir_path,"..",".."))
@@ -10,6 +11,24 @@ if parent_dir_path not in sys.path:
 
 from multi_train.supervised import *
 
+def validate_async(policy_monitor):
+    num_episodes = my_config.num_validation_episodes
+    all_args = {
+        env.get_instance_num(): (policy_monitor.network, [env], num_episodes, i) 
+            for i, env in enumerate(policy_monitor.envs)
+    }
+    results_all_instances = evaluate_all(all_args, eval_func=eval_network)
+    ep_log = []
+    means = []
+    for env in policy_monitor.envs:
+        results = results_all_instances[env.get_instance_num()]
+        mean_creward = results["creward_means"][0]
+        ep_crewards = results["ep_crewards"][0]
+        ep_lengths = results["ep_lengths"][0]
+        ep_times = results["ep_times"][0]
+        ep_log.append((env, ep_crewards, ep_lengths, ep_times))
+        means.append(mean_creward)
+    return means, ep_log
 
 def validate(policy_monitor):
     results = policy_monitor.eval_policy(num_episodes=my_config.num_validation_episodes)
@@ -20,10 +39,9 @@ def validate(policy_monitor):
 # Returns two values the policy loss and the aux loss (None if not enabled).
 # @tf.function
 def train_step(network, x, y, env_wrapper, loss_fn, optimizer, grad_clip_value, multiplier=0.0):
-    import tensorflow as tf
     if my_config.add_aux_loss:
         with tf.GradientTape() as policynet_tape:
-            policynet_pred, dist_attn_coef = network.policy_prediction(x, env_wrapper, return_attn_coef=True)
+            policynet_pred, dist_attn_coef = network.policy_prediction(x, env_wrapper, return_attn_coef=True, training=True)
             policynet_loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)(y, policynet_pred)
             if my_config.use_fluent_for_kl:
                 random_node = tf.constant(env_wrapper.get_random_fluent_node(), dtype=tf.int32)
@@ -56,7 +74,6 @@ def train_step(network, x, y, env_wrapper, loss_fn, optimizer, grad_clip_value, 
 # Trains for the given number of epochs.
 # Each epoch uses the entire dataset of each instance to perform updates.
 def train(model_dir, ckpt_dir, log_file=None):
-    import tensorflow as tf
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.keras.backend.set_floatx('float64')
 
@@ -91,12 +108,13 @@ def train(model_dir, ckpt_dir, log_file=None):
         domain=my_config.domain)
     print("Created policy monitor.")
 
+    validate_async(policy_monitor)
+
     # SUPERVISED TRAINING STARTS
     # Training dataset
-    from supervised_dataset import SupervisedDataset
     batch_size = my_config.batch_size # fixed at 32
     dataset_ob = SupervisedDataset(train_instances, train_envs, batch_size)
-    print("Loading datasets.")
+    print("Loaded datasets.")
 
     # Loss Function
     loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
@@ -155,7 +173,7 @@ def train(model_dir, ckpt_dir, log_file=None):
         if (epoch % my_config.ckpt_freq) == my_config.ckpt_freq-1:
             save_path = model_factory.save_ckpt()
             time.sleep(5)
-            crewards, ep_log = validate(policy_monitor)
+            crewards, ep_log = validate_async(policy_monitor)
             if log_file is not None:
                 helper.log_checkpoint_rewards(log_file, crewards, model_factory.get_ckpt_num())
             # Log best and current mean total rewards.
@@ -175,6 +193,9 @@ def train(model_dir, ckpt_dir, log_file=None):
             best_val_reward = max(best_val_reward, val_reward)
             helper.write_checkpoint_results(save_path, ckpt_log, ep_log)
             ckpt_log = []
+
+    for env in train_envs + policy_monitor.envs:
+        env.close()
 
 if __name__ == '__main__':
     config_file = sys.argv[1] if len(sys.argv) > 1 else None

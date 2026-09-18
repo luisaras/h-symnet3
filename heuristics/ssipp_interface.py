@@ -37,8 +37,7 @@ class PlannerExtensions(object):
 		self.ssipp = ssipp
 		self.ssipp_problem = ssipp.init_problem(instance_name)
 		if self.ssipp_problem == None:
-			print("Error while initializing the instance: " + instance_name)
-			sys.exit(1)
+			raise Exception("Error while initializing the instance: " + instance_name)
 		# this leaks for some reason; will store it here so I don't have to reconstruct
 		self.ssp = ssipp.SSPfromPPDDL(self.ssipp_problem)
 		print(f"PPDDL {instance_name} initialized.", flush=True)
@@ -51,6 +50,7 @@ class PlannerExtensions(object):
 			return self._cache[state]
 		else:
 			val = [heur.eval_state(state) for heur in self.heuristics]
+			#val = ",".join(map(str, val))
 			self._cache[state] = val
 			return val
 
@@ -72,7 +72,7 @@ class Evaluator:
 		#cuts = self.cutter.get_action_cuts(ssipp_state)
 		#print("=========== CUTS: " + str(cuts))
 		#return self.evaluator.state_value(ssipp_state)
-		return [self.heuristic.value(ssipp_state)]
+		return [int(self.heuristic.value(ssipp_state))]
 
 class Cutter:
 	# ssipp appends -prob-j to an action name to signify that it is the j-th

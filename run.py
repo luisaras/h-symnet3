@@ -119,8 +119,7 @@ def get_setting_instances(setting):
 	elif setting == "det":
 		return (255, 455, 465, 505)
 	else:
-		print("setting not defined: " + str(setting))
-		sys.exit(1)
+		raise Exception("setting not defined: " + str(setting))
 
 
 if __name__ == "__main__":

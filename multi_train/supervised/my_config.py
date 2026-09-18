@@ -63,7 +63,7 @@ heuristics = [] # "lmc", "hadd", and/or "hmax"
 # start: initialize on start;
 # on_demand: only when needed (on simulation);
 # null: never (only use pre-computed)
-init_heuristics = "on_demand"
+init_heuristics = "start"
 # none: don't normalize
 # horizon: divide by horizon
 # max: divide by max value found in dataset

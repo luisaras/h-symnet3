@@ -25,7 +25,7 @@ class PolicyMonitor(object):
 			self.node_embs.append((state, node_emb))
 		else:
 			logits = self.network.policy_prediction([state], env,training=False)
-		return tf.argmax(tf.reshape(logits, [-1])).numpy()
+		return env.select_best_action(state, tf.reshape(logits, [-1]))
 
 	def simulate(self, env, policy, num_episodes=5, cache_actions=True):
 		if self.verbose:
@@ -131,7 +131,7 @@ class PolicyMonitor(object):
 
 	def eval_policy(self, num_episodes=5, get_attn_map=False, get_node_emb=False, cache_actions=True):
 		if self.network is None:
-			policy = lambda env, state: env.get_random_action()
+			policy = lambda env, state: env.select_random_action(state)
 		else:
 			policy = lambda env, state: self.predict_action(env, state, get_attn_map, get_node_emb)
 

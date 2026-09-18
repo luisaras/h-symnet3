@@ -5,11 +5,13 @@ import rpyc
 import ctypes
 import getpass
 import uuid
-import weakref
 import builtins
+import threading
+import traceback
 from copy import deepcopy
 from multiprocessing import Process
 from time import sleep, time
+from types import SimpleNamespace
 try:
     import kernprof
 except ImportError:
@@ -45,27 +47,40 @@ def make_problem_service(config):
     per environment, and you want to know which subprocess corresponds to which
     environment."""
 
+    lock = threading.Lock()
+
     class ProblemService(rpyc.Service):
         """Spools up a new Python interpreter and uses it to sandbox SSiPP and
         MDPSim. Can interact with this to train a Q-network."""
 
         def exposed_initialise(self):
-            assert not self.initialised, "Can't double-init"
-            self.p = PlannerExtensions(config.pddl_files, config.init_problem_name, config.heuristics)
-            self.initialised = True
+            with lock:
+                if self.initialised:
+                 return "Can't double-init"
+                try:
+                    self.p = PlannerExtensions(config.pddl_files, config.init_problem_name, config.heuristics)
+                    self.initialised = True
+                    return None
+                except:
+                    return "Couldn't initialize Planner for " + config.init_problem_name
 
         def exposed_compute_heuristics(self, atoms):
-            try:
-                return self.p.compute_heuristics(atoms)
-            except Exception as e:
-                print(e)
-                return None
+            with lock:
+                try:
+                    if not self.initialised:
+                        raise Exception(f"Planner for pddl {config.init_problem_name} was not initialised")
+                    return self.p.compute_heuristics(atoms)
+                except Exception as e:
+                    return str(traceback.format_exc())
+                    #return "".join(traceback.format_exception(type(e), e, e.__traceback__))
 
         def on_connect(self, conn):
             # we let the initialiser run later, so that it can execute
             # asynchronously (starting up PlannerExtensions & Planner is
             # expensive because it requires grounding the relevant problem)
-            self.initialised = False
+            with lock:
+                if not hasattr(self, "p"):
+                    self.initialised = False
 
     return ProblemService
 
@@ -83,10 +98,10 @@ def parent_death_pact(signal=signal.SIGINT):
 
 def start_server(service_args, socket_path):
     # avoid import cycle
-    parent_death_pact(signal=signal.SIGKILL)
+    #parent_death_pact(signal=signal.SIGKILL)
     new_service = make_problem_service(service_args)
-    server = rpyc.utils.server.OneShotServer(new_service, socket_path=socket_path)
-    print('Child process starting OneShotServer %s' % server)
+    server = rpyc.utils.server.ThreadedServer(new_service, socket_path=socket_path, backlog=1000)
+    print('Child process starting ThreadedServer %s' % server)
     try:
         server.start()
     finally:
@@ -135,13 +150,13 @@ class ProblemServer(object):
     # how long we need to wait for the connection to spool up
     MAX_WAIT_TIME = 15.0
 
-    def __init__(self, service_conf):
+    def __init__(self, service_conf, verbose=True):
         # Sockets go in /tmp rather than cwd because Linux limits socket paths
         # (not filenames!) to 108 chars, and cwd might be too long (yes,
         # seriously!). The username is just in there to avoid case where
         # somebody else makes the dir & stops us from writing to it.
         user = getpass.getuser()
-        sock_dir = f'/tmp/asnet-sockets-{user}/'
+        sock_dir = f'/tmp/hsymnet3-sockets-{user}/'
         os.makedirs(sock_dir, exist_ok=True)
         self._unix_sock_path = os.path.join(sock_dir,
                                             'socket.' + uuid.uuid4().hex)
@@ -153,26 +168,20 @@ class ProblemServer(object):
         self._serve_proc.start()
         self._start_time = time()
 
-        self._conn = None
-
-        # this ensures that we always close connection (& thus terminate server
-        # on other end) before shutting down, no matter what
-        # (basically weakref.finalize(obj, func) ensures that func is called
-        # when obj is destroyed---presumably just beforehand)
-        self._finalizer = weakref.finalize(self._serve_proc, self._kill_conn)
-
-    def _kill_conn(self):
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        self._thread_conns = SimpleNamespace()#threading.local()
+        self._conns = []
+        self._verbose = verbose
 
     def stop(self):
-        self._kill_conn()
-
+        print('\033[31mCleaning up server process\033[0m')
         try:
             os.unlink(self._unix_sock_path)
         except FileNotFoundError:
             pass
+
+        for conn in self._conns:
+            if conn is not None:
+                conn.close()
 
         if self._serve_proc is not None:
             self._serve_proc.terminate()
@@ -189,11 +198,13 @@ class ProblemServer(object):
 
     def __del__(self):
         if hasattr(self, '_serve_proc') and self._serve_proc is not None:
-            print('Cleaning up server process in destructor')
+            if self._verbose: print('Stop server in destructor')
             self.stop()
 
     def _get_rpyc_conn(self):
-        if self._conn is None:
+        if not hasattr(self._thread_conns, 'conn'):
+            if not self._serve_proc.is_alive():
+                print('\033[31mServer process is dead!\033[0m')
             to_wait = max(0, self.MAX_WAIT_TIME - (time() - self._start_time))
             if to_wait > 0:
                 # It actually takes a few seconds for the background worker to
@@ -202,20 +213,20 @@ class ProblemServer(object):
                 # better way of doing things than this (mostly because all the
                 # socket binding in RPyC happens in a monolithic "run
                 # everything" method which I can't break up).
-                print('Waiting at most %.2fs for rpyc connection' % to_wait)
+                if self._verbose: print('Waiting at most %.2fs for rpyc connection' % to_wait)
                 # ignore return value; we'll get an error later if the file
                 # doesn't exist
                 has_sock = wait_exists_polling(
                     self._unix_sock_path, max_wait=to_wait)
-                print(f"Wait time up, got has_sock={has_sock}")
+                if self._verbose: print(f"Wait time up, got has_sock={has_sock}")
             sleep_time = 1.0
-            print(f"Sleeping an extra {sleep_time}s to make sure conn is up")
+            if self._verbose: print(f"Sleeping an extra {sleep_time}s to make sure conn is up")
             sleep(sleep_time)
-            self._conn = rpyc.utils.factory.unix_connect(
+            conn = rpyc.utils.factory.unix_connect(
                 path=self._unix_sock_path)
-            # we can unlink socket after connecting
-            os.unlink(self._unix_sock_path)
-        return self._conn
+            self._conns.append(conn)
+            self._thread_conns.conn = conn
+        return self._thread_conns.conn
 
     @property
     def conn(self):
@@ -230,5 +241,8 @@ class ProblemServer(object):
 def make_planner_server(ppddl_file, instance_name, heuristics):
     config = ProblemServiceConfig([ppddl_file], instance_name, heuristics)
     server = ProblemServer(config)
-    server.service.initialise()
+    result = server.service.initialise()
+    if result is not None:
+        print("\033[31m" + result + "\033[0m")
+        raise Exception("Server error")
     return server

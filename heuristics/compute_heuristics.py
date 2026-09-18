@@ -9,8 +9,7 @@ if root_path not in sys.path:
 	sys.path = [root_path] + sys.path
 
 from heuristics import *
-from multi_train.supervised import my_config
-from gym.envs.rddl import instance_parser
+from multi_train.envs import InstanceParser
 
 def parse_arguments():
 	parser = argparse.ArgumentParser()
@@ -30,7 +29,7 @@ if __name__ == '__main__':
 		# Sanity test
 		problem = "navigation2x2-inst"
 		index_map = ["at11", "at12", "at21", "at22"]
-		states=["1,0,0,0", "0,1,0,0", "0,0,1,0", "0,0,0,1"]
+		states = ["1,0,0,0", "0,1,0,0", "0,0,1,0", "0,0,0,1"]
 		# Compute heuristics
 		planner_exts = PlannerExtensions([problem + ".ppddl"], problem, args.heuristics)
 		results = compute_all_heuristics(states, args.heuristics, planner_exts, index_map)
@@ -43,13 +42,13 @@ if __name__ == '__main__':
 		save_file = os.path.join(args.dataset, "heuristics", args.domain, args.instance + ".csv")
 		print("Loading " + ppddl_file + "...", flush=True)
 		
-		#planner_exts = PlannerExtensions([ppddl_file], problem, args.heuristics)
-		planner_exts = get_planner_wrapper(ppddl_file, problem, args.heuristics).server.service
+		planner_exts = PlannerExtensions([ppddl_file], problem, args.heuristics)
+		#planner_exts = get_planner_wrapper(ppddl_file, problem, args.heuristics).server.service
 
 		# RDDL parser
 		print("Parsing " + problem + "...", flush=True)
-		instance_parser.setup(heuristics=args.heuristics, benchmark_folder=os.path.abspath(args.benchmark))
-		instance_parser = instance_parser.InstanceParser(args.domain, args.instance)
+		instance_parser = InstanceParser(args.domain, args.instance,
+			heuristics=args.heuristics, benchmark_folder=os.path.abspath(args.benchmark))
 
 		# States
 		states = read_prost_states(data_file)

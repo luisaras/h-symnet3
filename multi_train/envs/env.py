@@ -2,15 +2,14 @@ import sys, os, random
 #import faulthandler
 #faulthandler.enable()
 import numpy as np
-import gym
 
-from gym import Env
-from gym.utils import seeding
-from gym.envs.rddl.instance_parser import InstanceParser
-from gym.envs.rddl.simulator import RDDLSimulator, PyRDDLSimulator
+from gymnasium import Env
+from gymnasium.utils import seeding
+from .instance_parser import InstanceParser
+from .simulator import RDDLSimulator
 
 class RDDLEnv(Env):
-	def __init__(self, domain="navigation", instance="1"):
+	def __init__(self, domain="navigation", instance="1", **kwargs):
 		self.domain = domain + '_mdp'
 		self.problem = domain + '_inst_mdp__' + instance
 		self.instance = instance
@@ -18,10 +17,10 @@ class RDDLEnv(Env):
 		print("Creating env " + instance + "...")
 
 		# Instance Graph
-		self.instance_parser = InstanceParser(domain, instance)
+		self.instance_parser = InstanceParser(domain, instance, **kwargs)
 
 		# Seed Random number generator
-		self._seed()
+		#self.seed()
 
 		self.rddlsim = RDDLSimulator(self.instance_parser)
 		self.rddlsim.reset()
@@ -29,12 +28,12 @@ class RDDLEnv(Env):
 		print("Created env " + self.problem)
 		
 	# Do not understand this yet. Almost all other sample environments have it, so we have it too.
-	def _seed(self, seed=None):
-		self.np_random, seed = seeding.np_random(seed)
-		return [seed]
+	#def seed(self, seed=None):
+		#self.np_random, seed = seeding.np_random(seed)
+		#return [seed]
 
 	# Take a real step in the environment. Current state changes.
-	def _step(self, action_var: int):
+	def step(self, action_var: int):
 		state, reward, done = self.rddlsim.step(action_var)
 		return state, reward, done, {}
 
@@ -63,11 +62,13 @@ class RDDLEnv(Env):
 	def random_reset(self):
 		return self.reset_to_state(self.random_state())
 
-	def _reset(self):
+	def reset(self, seed=None, options=None):
 		return self.reset_to_state(None)
 
-	def _close(self):
-		pass
+	def close(self):
+		print("RDDL SIM CLOSED")
+		self.rddlsim.close()
+		self.rddlsim = None
 
 	def compute_expected_step(self, state, action):
 		# Make next state and call get_processed input to get next
@@ -88,36 +89,6 @@ class RDDLEnv(Env):
 			else:
 				prob *= (1 - bernoulli_probs[i])
 		return prob
-
-	def get_extended_action_details(self):
-		return np.array(self.instance_parser.extended_detailed_action)
-
-	def get_nf_features(self):
-		# Get features (one for each node) of node constants (non-fluent)
-		return np.array(self.instance_parser.nf_features)
-
-	def get_graph_nf_features(self):
-		# Get features of global graph constants (non-fluent)
-		return np.array(self.instance_parser.unpara_nf_values)
-
-	def get_adjacency_mats(self):
-		# Convert adj lists to adj matrices
-		adj_mats = []
-		for adj_list in self.instance_parser.adjacency_lists: # One list per layer
-			num = len(adj_list)
-			adj_mat = np.array(np.zeros((num, num), dtype=np.int32), dtype=np.int32)
-			for i in range(num):
-				adj_mat[i][i] = 1
-			for node, neighbors in adj_list.items():
-				for n in neighbors:
-					adj_mat[node, n] = 1
-			adj_mats.append(adj_mat)
-		return adj_mats
-
-	def get_feature_dims(self):
-		node_dim = self.instance_parser.fluent_feature_dims + self.instance_parser.nonfluent_feature_dims
-		graph_dim = self.instance_parser.graph_fluent_feature_dims
-		return node_dim + self.instance_parser.graph_nonfluent_feature_dims, graph_dim
 
 	def get_num_action_nodes(self):  # Number of nodes corresponding to state variable tuples
 		return len(self.instance_parser.extended_node_dict) - len(self.instance_parser.node_dict)

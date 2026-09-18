@@ -37,9 +37,6 @@ def generate_dot(instance, rddl, out_file):
 		#print(result.stdout)
 	except subprocess.CalledProcessError as e:
 		result = e
-	except Exception as e:
-		print(e)
-		sys.exit(1)
 	finally:
 		if os.path.exists(dbn_file):
 			shutil.move(dbn_file, out_file)

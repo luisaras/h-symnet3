@@ -30,11 +30,14 @@ def setup(**kwargs):
         config[k] = v
 
 class InstanceParser(object):
-    def __init__(self, domain="navigation", instance="1"):
+    def __init__(self, domain="navigation", instance="1", **kwargs):
+        self.config = deepcopy(config)
+        for k, v in kwargs.items():
+            self.config[k] = v
         self.domain = domain
         self.instance = instance
 
-        self.domain_folder = os.path.join(config["benchmark_folder"], domain)
+        self.domain_folder = os.path.join(self.config["benchmark_folder"], domain)
         self.domain_file = os.path.join(self.domain_folder, "rddl", domain + "_mdp.rddl")
         self.instance_file = os.path.join(self.domain_folder, "rddl", domain + "_inst_mdp__" + instance + ".rddl")
         self.parsed_instance_file = os.path.join(self.domain_folder, "parsed", domain + "_inst_mdp__" + instance)
@@ -103,7 +106,7 @@ class InstanceParser(object):
             self.para_state_of_objects_nf_values[k] = []  #
             self.para_state_of_objects_nf_values_names[k] = []
 
-        self.remove_dbn = config["remove_dbn"]
+        self.remove_dbn = self.config["remove_dbn"]
         self.unary_nf_names_gnd = set()
         self.multiple_nf_names_gnd = set()
         self.objects_in_instance_file_gnd = None
@@ -547,7 +550,7 @@ class InstanceParser(object):
             template_num = self.action_template_to_num[action_template]
             node_num = self.node_dict[node]
             self.action_affects[template_num] = True
-            if not config["remove_dbn"]:
+            if not self.config["remove_dbn"]:
                 if action_num not in self.detailed_action.keys():
                     self.detailed_action[action_num] = (template_num, set([node_num]), [])  # Details about that action (Action_num, what template, which node it infolunces)
                 else:
@@ -604,15 +607,15 @@ class InstanceParser(object):
 
     def build_adjacency_lists(self):
         extra_adj = 1
-        if config["add_separate_adj"]:
+        if self.config["add_separate_adj"]:
             # Last 2 are extra layers. -2 is for DBN edges and -1 for (x,y) to x and y each
             extra_adj += 2
-        if config["add_edge_type"]:
+        if self.config["add_edge_type"]:
             extra_adj += self.max_arity
         self.adjacency_lists = [{} for _ in range(len(
             self.action_template_to_num.keys()) + extra_adj)]  # the kth adjacency list defines adjacency due to kth action template (Into different decoders?)
         self.num_nodes = len(self.node_dict)
-        if not config["remove_dbn"]:
+        if not self.config["remove_dbn"]:
             for a, b in sorted(self.para_state_connections):
                 if self.node_dict[a] not in self.adjacency_lists[0].keys():  # Add directed edges to the
                     self.adjacency_lists[0][self.node_dict[a]] = [self.node_dict[b]]
@@ -620,12 +623,12 @@ class InstanceParser(object):
                     self.adjacency_lists[0][self.node_dict[a]].append(self.node_dict[b])
 
         # Keep DBN edges separately in -2 adj
-        if config["add_separate_adj"]:
+        if self.config["add_separate_adj"]:
             for k in self.adjacency_lists[0].keys():
                 self.adjacency_lists[-2][k] = self.adjacency_lists[0][k]
 
         # Vishal Start: Add new edges between new nodes for non-fluents and gnd objects
-        if config["merged_model"]:
+        if self.config["merged_model"]:
             for k, obj in enumerate(sorted(self.node_dict.keys())):
                 for next_obj in obj.split(","):
                     if self.node_dict[obj] not in self.adjacency_lists[0]:
@@ -638,7 +641,7 @@ class InstanceParser(object):
                 for next_obj in obj.split(","):
                     if self.node_dict[obj] not in self.adjacency_lists[0]:
                         self.adjacency_lists[0][self.node_dict[obj]] = [self.node_dict[next_obj]]
-                        # if config["add_separate_adj"]:
+                        # if self.config["add_separate_adj"]:
                         # 	self.adjacency_lists[-2][self.node_dict[obj]] = []
                     else:
                         if self.node_dict[next_obj] not in self.adjacency_lists[0][self.node_dict[obj]]:
@@ -646,14 +649,14 @@ class InstanceParser(object):
 
                     if self.node_dict[next_obj] not in self.adjacency_lists[0]:
                         self.adjacency_lists[0][self.node_dict[next_obj]] = [self.node_dict[obj]]
-                        # if config["add_separate_adj"]:
+                        # if self.config["add_separate_adj"]:
                         # 	self.adjacency_lists[-2][self.node_dict[obj]] = []
                     else:
                         if self.node_dict[obj] not in self.adjacency_lists[0][self.node_dict[next_obj]]:
                             self.adjacency_lists[0][self.node_dict[next_obj]].append(self.node_dict[obj])
 
         # For the case where we want to add edge types
-        if config["add_edge_type"]:
+        if self.config["add_edge_type"]:
             offset = len(self.adjacency_lists) - self.max_arity
             # Copy keys
             for zz in range(offset, len(self.adjacency_lists)):
@@ -677,13 +680,13 @@ class InstanceParser(object):
                             self.adjacency_lists[offset+zz][self.node_dict[next_obj]].append(self.node_dict[obj])
 
                     
-        if config["add_separate_adj"]:
+        if self.config["add_separate_adj"]:
             for k in self.adjacency_lists[0].keys():
                 if k not in self.adjacency_lists[-2]:
                     self.adjacency_lists[-2][k] = []
 
         # Exact same loop as above but for last adj i.e. for (x,) to x and y each.
-        if config["add_separate_adj"]:
+        if self.config["add_separate_adj"]:
             for k, obj in enumerate(sorted(self.node_dict.keys())):
                 for next_obj in obj.split(","):
                     if self.node_dict[obj] not in self.adjacency_lists[-1]:
@@ -768,7 +771,7 @@ class InstanceParser(object):
         self.fluent_feature_dims = len(self.para_state_names) + len(self.unpara_fluents)
         self.graph_fluent_feature_dims = len(self.unpara_state_names)
 
-        if config["split_dbn"]:
+        if self.config["split_dbn"]:
             # Split edge type layers
             dbn_edge_types = []
             for (start, end) in self.para_state_connections:
@@ -812,11 +815,11 @@ class InstanceParser(object):
             else:
                 template_adj_list[ext_arg].append(ext_node)
 
-        if not config["merged_model"]:
-            if config["remove_dbn"] and config["add_edge_type"]:
+        if not self.config["merged_model"]:
+            if self.config["remove_dbn"] and self.config["add_edge_type"]:
                 # Remove edge type layers
                 self.adjacency_lists = self.adjacency_lists[-self.max_arity:]
-            elif config["use_only_first_adj"]:
+            elif self.config["use_only_first_adj"]:
                 self.adjacency_lists = [self.adjacency_lists[0]]
 
     def get_fluent_features(self, state: tuple) -> list:  # Given a vector of the state, build feature vector for each fluents
@@ -847,6 +850,7 @@ class InstanceParser(object):
         for key, i in self.state_to_num.items():
             if key in self.unpara_state_names:  # If unparametrized fluents , append it to the graph embedding
                 gf.append(state[i])
+        gf.append(self.horizon)
         return gf
 
     def get_attr(self, attr):

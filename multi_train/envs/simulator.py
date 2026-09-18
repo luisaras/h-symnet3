@@ -40,13 +40,11 @@ class RDDLSimulator:
 
 		lib_path = os.path.join(curr_dir_path, "clibxx.so")
 		if not os.path.isfile(lib_path):
-			print("Lib file not found: " + lib_path)
-			sys.exit(-1)
+			raise FileNotFoundError("Lib file not found: " + lib_path)
 		lib_copy_path = tempfile.NamedTemporaryFile().name
 		shutil.copy2(lib_path, lib_copy_path)
 		if not os.path.isfile(lib_copy_path):
-			print("Failed to copy lib file to: " + lib_copy_path)
-			sys.exit(-1)
+			raise FileNotFoundError("Failed to copy lib file to: " + lib_copy_path)
 		print("Copied rddlsim library: " + lib_path)
 
 		self.simlib = ctypes.CDLL(lib_copy_path)
@@ -82,10 +80,10 @@ class RDDLSimulator:
 
 	def _is_done(self, s: tuple) -> tuple[bool, int]:
 		if self._tstep > self.horizon:
-			return True, 1 
+			return True, 1
 		elif self.termination_id >= 0:
 			if s[self.termination_id] == 1:
-				return True, self.horizon - self._tstep + 1
+				return True, self.horizon - self._tstep + 2
 		return False, 0
 
 	def reset(self, state: tuple = None) -> tuple[float, ...]:
@@ -111,6 +109,9 @@ class RDDLSimulator:
 		if done: # Only works for 0-reward goal
 			reward *= steps
 		return self._state, reward, done
+
+	def close(self):
+		pass
 
 
 class PyRDDLSimulator:

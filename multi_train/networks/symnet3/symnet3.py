@@ -119,6 +119,7 @@ class SymNet3(tf.keras.Model):
 
         return adjacency_matrix, node_features, graph_features
 
+    #@tf.function
     def encode_nodes(self, encoders, node_features, adjacency_matrix):
         # se_embed_l: number of filters X number of states in the batch X number of features per node
         se_embed_l = []
@@ -132,16 +133,18 @@ class SymNet3(tf.keras.Model):
         node_features = tf.concat(se_embed_l, axis=-1) # Number of node features is extended
         return node_features, se_embed_l
 
+    #@tf.function
     def get_global_embedding(self, node_features, graph_features, adjacency_matrix):
         batch_size = node_features.shape[0]
         global_embed_pooled = tf.reduce_max(node_features, axis=1)
         global_embed = tf.reshape(tf.concat([global_embed_pooled, graph_features], axis=1), [batch_size, -1])
-        if self.ge_type == "deep_global_pool":
-            A = tf.reduce_max(adjacency_matrix, 0)
-            global_embed_pooled_deep = self.global_embedder_net(node_features, A)
-            global_embed = tf.concat([global_embed, global_embed_pooled_deep], axis=-1)
+        #if self.ge_type == "deep_global_pool":
+        #    A = tf.reduce_max(adjacency_matrix, 0)
+        #    global_embed_pooled_deep = self.global_embedder_net(node_features, A)
+        #    global_embed = tf.concat([global_embed, global_embed_pooled_deep], axis=-1)
         return global_embed
 
+    #@tf.function
     def filter_nodes(self, batch_size, nodes, node_embedding, extend=[]):
         # Select embeddings of nodes
         filtered = [tf.reshape(node_embedding[:, node, :], [batch_size, self.node_embed_dim]) for node in nodes]
@@ -195,27 +198,31 @@ class SymNet3(tf.keras.Model):
 
         return tf.concat(action_scores, axis=-1)
 
-    def policy_prediction(self, states, env_wrapper, sample=False, training=True, prune_actions=False, return_attn_coef=False, return_node_emb=False):
-        # node_features: number of states in the batch X number of nodes per state X number of node fluents
-        # graph_features: number of states in the batch X number of state fluents
+    #@tf.function
+    def encode_distance_features(self, node_features, d, mask):
+        batch_size = node_features.shape[0]
+        mask = tf.repeat(mask[None,:], batch_size, axis=0)
+        d = tf.transpose(d, [1, 0, 2, 3])
+        adjacency_matrix_fc = tf.ones_like(d)
+        distance_features, dist_attn_coef = self.gat_distance_mat(
+            node_features, adjacency_matrix_fc, d, mask, 
+            self.use_self_loops_in_all_adj, self.remove_attn, beta=1.0)
+        return tf.concat([node_features, distance_features], axis=-1), dist_attn_coef
+
+    def policy_prediction(self, states, env_wrapper, training=True, return_attn_coef=False, return_node_emb=False):
+        # node_features: batch_size X number of nodes per state X number of node fluents
+        # graph_features: batch_size X number of state fluents
+        # adjacency_matrix: number of layers X batch_size X dest_node X src_node
         adjacency_matrix, node_features, graph_features = self.get_state_features(states, env_wrapper)
-        adjacency_matrix = np.transpose(adjacency_matrix, [0, 1, 3, 2])
         batch_size = node_features.shape[0]
 
         if self.preprocess_gat:
             node_features, _ = self.encode_nodes(self.se_list_preprocess, node_features, adjacency_matrix)
             
         if self.use_distance_mat:
-            d = np.max(adjacency_matrix.astype("int32"), 0)
-            d = env_wrapper.get_distance_mat(d)
-            mask = env_wrapper.get_distance_mask()[None,:] # A 2D mask 
-            mask = tf.repeat(mask, d.shape[0], axis=0)
-            d = np.transpose(d, [1, 0, 2, 3])
-            adjacency_matrix_fc = np.ones_like(d)
-            distance_features, dist_attn_coef = self.gat_distance_mat(
-                node_features, adjacency_matrix_fc, d, mask, 
-                self.use_self_loops_in_all_adj, self.remove_attn, beta=1.0)
-            node_features = tf.concat([node_features, distance_features], axis=-1)
+            d = env_wrapper.get_distance_mat(batch_size)
+            mask = env_wrapper.get_distance_mask() # A 2D mask 
+            node_features, dist_attn_coef = self.encode_distance_features(node_features, d, mask)
 
         node_features, se_embed_l = self.encode_nodes(self.se_list_postprocess, node_features, adjacency_matrix)
 
@@ -225,26 +232,11 @@ class SymNet3(tf.keras.Model):
 
         # scores: number of states X number of grounded actions
         action_scores = self.get_action_scores(states, env_wrapper, node_features, global_features, training=training)
-        
-        if sample:
-            logits = tf.nn.log_softmax(action_scores)
-            if prune_actions:
-                # Get the actions you want to keep
-                masks = env_wrapper.get_prune_mask(states)
-                masks = logits.dtype.min * (1.0 - masks)
-                logits += masks
-            probs = tf.random.categorical(logits=logits, num_samples=len(states), dtype=tf.int32)  # Return sampled actions
-        else:
-            if prune_actions:
-                # Get the actions you want to keep
-                masks = env_wrapper.get_prune_mask(states)
-                masks = -10e9 * (1.0 - masks)
-                action_scores += masks
-            probs = tf.nn.softmax(action_scores)  # Expected shape is (batch_size,num_actions)
+        logits = tf.nn.softmax(action_scores)
 
         if return_attn_coef:
-            return probs, dist_attn_coef
+            return logits, dist_attn_coef
         elif return_node_emb:
-            return probs, se_embed_l
+            return logits, se_embed_l
         else:
-            return probs
+            return logits

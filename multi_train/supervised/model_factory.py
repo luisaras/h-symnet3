@@ -1,11 +1,11 @@
 import os, sys
 from itertools import count
 
+from multi_train.networks.symnet3 import SymNet3
 from . import my_config
 from . import symnet3_config
 
 symnet3_args = {"general_params", "se_params", "ad_params", "ge_params", "tm_params"}
-
 
 def get_args(env_wrapper, **args):
 	if "policynet_optim" not in args.keys():
@@ -55,9 +55,8 @@ class ModelFactory:
 		self.ckpt = tf.train.Checkpoint(**ckpt_parts)
 		self.ckpt_manager = tf.train.CheckpointManager(self.ckpt, ckpt_dir, 2000)
 
-	def create_network(self): #	 Creates a combined network
-		import multi_train.networks.symnet3.symnet3 as symnet3
-		return symnet3.SymNet3(**dict((k, self.args[k]) for k in symnet3_args))
+	def create_network(self): #	 Creates a combined networks
+		return SymNet3(**dict((k, self.args[k]) for k in symnet3_args))
 
 	@staticmethod
 	def copy_params(target_variables, source_variables):

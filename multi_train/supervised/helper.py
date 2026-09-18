@@ -2,10 +2,9 @@ import os, sys, shutil
 import numpy as np
 from datetime import datetime
 
-import gym
-from gym.envs.rddl import instance_parser
-from heuristics import setup_planner_wrappers
-from .env_instance_wrapper import EnvInstanceWrapper
+from heuristics import setup_planner_wrappers, get_planner_wrapper
+from multi_train.envs import RDDLEnv
+from multi_train.networks.symnet3 import EnvInstanceWrapper
 from . import my_config
 from . import symnet3_config
 
@@ -17,11 +16,6 @@ def load_config_mods(file, module):
 def load_config(file=None):
 	if file:
 		load_config_mods(file, my_config)
-	instance_parser.setup(
-		benchmark_folder=my_config.benchmark_folder,
-		remove_dbn=my_config.remove_dbn,
-		split_dbn=my_config.split_dbn
-	)
 	load_net_config(my_config.net_config)
 
 def load_net_config(net_config=None):
@@ -49,12 +43,24 @@ def make_envs(instances):
 		setup_planner_wrappers(my_config.init_heuristics, my_config.heuristic_normalization)
 	envs = []
 	for instance in instances:
-		try: 
-			env_name = "RDDL-{}{}-v1".format(my_config.domain, instance)
-			env = gym.make(env_name)
-			envs.append(EnvInstanceWrapper(env))
-		except ValueError as e:
-			print(e)
+		env = RDDLEnv(my_config.domain, instance,
+			benchmark_folder=my_config.benchmark_folder,
+			remove_dbn=my_config.remove_dbn,
+			split_dbn=my_config.split_dbn
+		)
+		planner_wrapper = None
+		if my_config.heuristics:
+			domain_folder = env.instance_parser.domain_folder
+			ppddl_file = os.path.join(domain_folder, 'ppddl', env.problem + ".ppddl")
+			planner_wrapper = get_planner_wrapper(ppddl_file, env.problem, my_config.heuristics)
+			planner_wrapper.instance_parser = env.instance_parser
+			h_file = os.path.join(my_config.heuristics_dataset_folder,
+				env.instance_parser.domain, 
+				env.instance_parser.instance + '.csv')
+			planner_wrapper.add_cache(h_file)
+		envs.append(EnvInstanceWrapper(env, planner_wrapper,
+			heuristic_samples=my_config.heuristic_samples
+		))
 	return envs
 
 def failsafe():
@@ -76,8 +82,7 @@ def write_content(file_path, content):
 			f.write(content)
 	except OSError as e:
 		print("Error writing file: " + str(file_path), file=sys.stderr)
-		print(e)
-		sys.exit(e.errno)
+		raise e
 
 def copy_files_into(src_paths, dst_path):
 	with open(os.path.abspath(dst_path), "a") as dst:

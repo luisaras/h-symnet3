@@ -1,7 +1,6 @@
-import sys, os
+import sys, os, threading, rpyc, gc
 from .ssipp_interface import num_heuristic_features
 from .problem_server import make_planner_server
-
 
 wrappers = dict()
 WRAPPER_TYPE = "start"
@@ -12,18 +11,19 @@ def setup(wrapper_type, normalization):
 	global NORMALIZATION
 	NORMALIZATION = normalization
 
-
-def get_planner_wrapper(ppddl_file, instance_name, heuristics):
+wrapper_dict_lock = threading.Lock()
+def get_planner_wrapper(ppddl_file, instance_name, heuristic_names):
 	if instance_name in wrappers:
 		return wrappers[instance_name]
 	else:
-		if WRAPPER_TYPE == "null":
-			wrapper = PlannerWrapper(instance_name, heuristics)
-		elif WRAPPER_TYPE == "on_demand":
-			wrapper = PlannerWrapper(instance_name, heuristics, ppddl_file=ppddl_file)
-		else:
-			server = make_planner_server(ppddl_file, instance_name, heuristics)
-			wrapper = PlannerWrapper(instance_name, heuristics, server=server)
+		with wrapper_dict_lock:
+			if WRAPPER_TYPE == "null":
+				wrapper = PlannerWrapper(instance_name, heuristic_names)
+			elif WRAPPER_TYPE == "on_demand":
+				wrapper = PlannerWrapper(instance_name, heuristic_names, ppddl_file=ppddl_file)
+			else:
+				server = make_planner_server(ppddl_file, instance_name, heuristic_names)
+				wrapper = PlannerWrapper(instance_name, heuristic_names, server=server)
 		wrappers[instance_name] = wrapper
 		return wrapper
 
@@ -78,9 +78,15 @@ class PlannerWrapper:
 		self.server = server
 		self.ppddl_file = ppddl_file
 		self.heuristic_names = heuristic_names
+		self.verbose = True
 		self._cache = dict()
 		self.h_max = None
 		self.h_min = None
+		self._lock = threading.Lock()
+
+	def close(self):
+		if self.server:
+			self.server.stop()
 
 	def get_num_heuristic_features(self):
 		return num_heuristic_features(self.heuristic_names)
@@ -125,15 +131,26 @@ class PlannerWrapper:
 			if self.ppddl_file is None:
 				return self.null_heuristics
 			args = (self.ppddl_file, self.problem, self.heuristic_names)
-			print("Building server for problem " + self.problem + " on demand to compute state: " + atoms)
-			self.server = make_planner_server(*args)
+			if self.verbose:
+				state_str = ','.join(map(str, map(int, state)))
+				print(f"Building server for problem {self.problem} on demand to compute state {state_str}")
+			with self._lock:
+				self.server = make_planner_server(*args)
 		# Compute on the fly
-		heuristics = self.server.service.compute_heuristics(atoms)
-		features = merge_heuristics(heuristics)
-		if NORMALIZATION == 'max':
-			self.normalize_min_max(features)
-		elif NORMALIZATION == 'horizon':
-			for i in range(len(features)):
-				features[i] /= self.instance_parser.horizon
-		self._cache[atoms] = features
-		return features
+		with self._lock:
+			results = self.server.service.compute_heuristics(atoms)
+			if isinstance(results, str):
+				print(results)
+				raise Exception("Server error")
+			#results = rpyc.classic.obtain(remote_proxy)
+			#results = map(int, heuristics.split(","))
+			features = merge_heuristics(results)
+			if NORMALIZATION == 'max':
+				self.normalize_min_max(features)
+			elif NORMALIZATION == 'horizon':
+				for i in range(len(features)):
+					features[i] /= self.instance_parser.horizon
+			if self.verbose:
+				print(f"New heuristics for env {self.problem} state {atoms}: {features}")
+			self._cache[atoms] = features
+			return features

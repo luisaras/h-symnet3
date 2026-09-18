@@ -19,7 +19,7 @@ def test(domain='navigation', instances=test_instances, num_episodes=30):
             episode_length = 0
             episode_reward = 0
             while not done:
-                action = envs[i].get_random_action()
+                action = envs[i].select_random_action()
                 previous_action = action
                 next_state, reward, done, _ = envs[i].step(action)
                 print(('state: {}  action: {}  reward: {} next: {}'.format(state, action, reward, next_state)))

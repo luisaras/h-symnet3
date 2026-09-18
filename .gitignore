@@ -9,10 +9,11 @@ benchmarks/*/rddl/*_inst_mdp__*.rddl
 
 # Trained models
 symnet3_data.zip
-multi_train/deep_plan/models/*/*.py
-multi_train/deep_plan/models/*/checkpoints/*.data*
-multi_train/deep_plan/models/*/checkpoints/*.index
-multi_train/deep_plan/models/*/checkpoints/checkpoint
+multi_train/supervised/models/*/*.py
+multi_train/supervised/models/*/checkpoints/*.data*
+multi_train/supervised/models/*/checkpoints/*.index
+multi_train/supervised/models/*/checkpoints/checkpoint
+multi_train/supervised/models/
 
 # Temp files and logs
 temp_*/
