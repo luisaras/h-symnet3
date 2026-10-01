@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 
 plt.rcParams.update({'svg.fonttype': 'none'})  # keep text as text in SVG
 
-METHODS = {"standard": "Baseline", "lmc_norm0": "LM-Cut", "lmc_norm1": "LM-Cut (norm)"}
-DOMAINS = {"navigation": "Deterministic Navigation", "navigation_mini": "Deterministic Navigation", 
+METHODS = {"standard": "Baseline", "lmc-norm0": "LM-Cut", "lmc-norm1": "LM-Cut (norm)"}
+DOMAINS = {"navigation": "Navigation",
+	"navigation_ippc1": "Navigation (small)", 
+	"navigation_ippc2": "Navigation (medium)", 
 	"sysadmin": "SysAdmin",
 	"academic_advising": "Academic Advising"
 }
@@ -43,9 +45,7 @@ def parse_arguments():
 		type=str, default="png")
 	return parser.parse_args()
 
-
-def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str):
-	methods = []
+def read_data(root, ckpt, domain):
 	method_dfs = {}
 	max_reward = float("-inf")
 	min_reward = float("inf")
@@ -70,13 +70,19 @@ def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str
 		min_reward = min(min_reward, df_episodes["reward"].min())
 		max_loss = max(max_loss, df_losses["loss"].max())
 		min_loss = min(min_loss, df_losses["loss"].min())
+	return method_dfs, (min_reward, max_reward, min_loss, max_loss)
 
-	ylims = (min_reward, max_reward, min_loss, max_loss)
+
+def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str):
+	method_dfs, ylims = read_data(root, ckpt, domain)
+	df_avg_episodes_all = []
+	methods = []
 	for (method, (df_episodes, df_losses)) in method_dfs.items():
 		df_avg_episodes = df_episodes.groupby("epoch").mean().reset_index()
-		df_avg_losses = df_losses.groupby('epoch').mean().reset_index()
+		df_avg_losses = df_losses.groupby("epoch").mean().reset_index()
 
 		plot_learning_curve(out_dir, df_avg_episodes, df_avg_losses, method, domain, ext, ylims)
+		df_avg_episodes_all.append((method, df_avg_episodes))
 
 		# Determine best reward
 		best_avg_reward = float(df_avg_episodes["reward"].iloc[-1])
@@ -98,6 +104,8 @@ def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str
 			'eval_time': eval_time
 		})
 
+	plot_combined_learning_curve(out_dir, df_avg_episodes_all, domain, ext, ylims)
+
 	df_methods = pd.DataFrame(methods)
 	path = os.path.join(out_dir, f'{domain}.csv')
 	df_methods.to_csv(path, index=False)
@@ -108,6 +116,32 @@ def generate_all_plots(root: str, out_dir: str, ckpt: int, domain: str, ext: str
 
 	print('\nAll done.\n')
 
+
+def plot_combined_learning_curve(out_dir: str, df_avg_episodes_all: list, domain: str, ext: str, ylims):
+	#ep_episodes = [df['reward'].mean() for df in episodes]
+	#ep_epochs = range(1, (len(episodes)+1) * EPOCHS, EPOCHS)
+	total_epochs = df_avg_episodes_all[0][1]["epoch"].max()
+
+	# Axis x
+	fig, ax = plt.subplots(figsize=(4,4))
+	ax.set_xlabel('Epochs')
+	ax.set_xlim(1, total_epochs)
+
+	# Axis y: Reward
+	ax.set_ylabel('Average Cumulative Reward')
+	ax.set_ylim(ylims[0], ylims[1])
+	for method, df_avg_episodes in df_avg_episodes_all:
+		ax.plot(df_avg_episodes["epoch"], df_avg_episodes["reward"], linewidth=1.5, label=METHODS[method])
+
+	ax.set_title(f'{DOMAINS[domain]} - All Methods')
+	ax.grid(True, linestyle=':', linewidth=0.5)
+	ax.legend(loc='best')
+
+	out_path = os.path.join(out_dir, f'{domain}_rewards.{ext}')
+	fig.tight_layout()
+	fig.savefig(out_path, format=ext)
+	plt.close(fig)
+	print("Generated combined learning curve: " + out_path)
 
 def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: str, domain: str, ext: str, ylims):
 	#ep_episodes = [df['reward'].mean() for df in episodes]
@@ -121,7 +155,7 @@ def plot_learning_curve(out_dir: str, df_avg_episodes, df_avg_losses, method: st
 
 	# Axis y: Reward
 	color = "tab:blue"
-	ax.set_ylabel('Average Total Reward', color=color)
+	ax.set_ylabel('Average Cumulative Reward', color=color)
 	ax.tick_params(axis='y', labelcolor=color)
 	ax.set_ylim(ylims[0], ylims[1])
 	ax.plot(df_avg_episodes["epoch"], df_avg_episodes["reward"], linewidth=1.5, color=color)

@@ -48,8 +48,12 @@ def evaluate_all(all_args, eval_func=None):
     if eval_func is None:
         eval_func = load_and_eval
     results_all_instances = {}
+    if my_config.num_threads == 1:
+        for instance, arg in all_args.items():
+            results_all_instances[instance] = eval_func(*arg)
+        return results_all_instances
     with ThreadPoolExecutor(max_workers=my_config.num_threads) as executor:
-        futures = {executor.submit(eval_func, *arg): i for i, arg in all_args.items()}
+        futures = {executor.submit(eval_func, *arg): instance for instance, arg in all_args.items()}
         for future in as_completed(futures.keys()):
             instance = futures[future]
             try:

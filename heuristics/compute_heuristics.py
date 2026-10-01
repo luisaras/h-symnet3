@@ -56,4 +56,4 @@ if __name__ == '__main__':
 		print("Computing heuristics for " + problem + "...", flush=True)
 		results = compute_all_heuristics(states, args.heuristics, planner_exts, instance_parser.num_to_state)	
 		# Write results
-		write_heuristic_values(save_file, results, instance_parser)
+		write_heuristic_values(save_file, results, args.heuristics)

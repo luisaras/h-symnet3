@@ -20,6 +20,8 @@ def parse_arguments():
 		default="standard")
 	parser.add_argument("-d", "--model_dir", help="model directory",
 		default=MODEL_DIR)
+	parser.add_argument("-w", "--n_workers", help="number of eval workers", 
+		type=int, default=1)
 	parser.add_argument("-e", "--epochs", help="train epochs (if none, it will only test trained models)", 
 		type=int, default=None)
 	parser.add_argument("-r", "--restore", help="load from (specified or last) checkpoint instead of training from scratch",
@@ -168,6 +170,7 @@ if __name__ == "__main__":
 			elif "norm1" in args.model:
 				file.write(f"heuristic_normalization = 'max'\n")
 		file.write(f"heuristic_samples = {args.n_samples}\n")
+		file.write(f"num_threads = {args.n_workers}\n")
 
 	py_dir = os.path.join("multi_train", "supervised")
 	config_path = os.path.join("..", "temp_config.py")

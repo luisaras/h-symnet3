@@ -24,12 +24,11 @@ def read_prost_states(file):
 			states.append(row[1])
 	return states
 
-def write_heuristic_values(file, dataset: dict, instance_parser):
-	# Compute heuristic
-	print("Computing heuristics for " + problem + "...", flush=True)
+def write_heuristic_values(file, dataset: dict, heuristic_names: list):
 	# Write results
 	with open(file, "w") as f:
 		for s, values in dataset.items():
-			heuristics = [",".join([name] + list(map(str, h))) for name, h in zip(instance_parser.heuristic_names, values)]
+			heuristics = [",".join([name] + list(map(str, h))) for name, h in zip(heuristic_names, values)]
 			f.write(":".join([s] + heuristics) + "\n")
+		print("Heuristics cache file created: " + file)
 

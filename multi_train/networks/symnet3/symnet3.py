@@ -162,8 +162,8 @@ class SymNet3(tf.keras.Model):
             arg_nodes = action_details[i][2] # Parameter nodes
 
             global_embed = global_features
-            if self.num_heuristics > 0:
-                h = env_wrapper.get_successor_heuristic_input(states, i)
+            h = env_wrapper.get_successor_heuristic_input(states, i)
+            if h is not None:
                 global_embed = tf.concat([global_embed, h], axis=-1)
 
             arg_node_embed = global_embed

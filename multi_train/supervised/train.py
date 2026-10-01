@@ -108,7 +108,7 @@ def train(model_dir, ckpt_dir, log_file=None):
         domain=my_config.domain)
     print("Created policy monitor.")
 
-    validate_async(policy_monitor)
+    #validate_async(policy_monitor)
 
     # SUPERVISED TRAINING STARTS
     # Training dataset

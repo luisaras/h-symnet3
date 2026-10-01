@@ -110,6 +110,8 @@ class EnvInstanceWrapper(Wrapper):
 		return tf.stack(list(map(state2tensor, states)))
 
 	def get_successor_heuristic_input(self, states, action_var) -> tf.Tensor:
+		if self.planner_wrapper is None:
+			return None
 		def state2samples(state): # n_samples X n_heuristics 
 			return [self.planner_wrapper.get_heuristics(self.env.sample_step(state, action_var)[0])
 						for i in range(self.heuristic_samples)]
